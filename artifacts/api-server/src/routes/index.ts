@@ -1,12 +1,12 @@
 import { Router, type IRouter } from "express";
 import healthRouter from "./health";
-import thoughtsRouter from "./thoughts";
 import actionsRouter from "./actions";
+import transcribeRouter from "./transcribe";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
-router.use("/thoughts", thoughtsRouter);
 router.use("/actions", actionsRouter);
+router.use("/transcribe", transcribeRouter);
 
 export default router;

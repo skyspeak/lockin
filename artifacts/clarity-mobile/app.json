@@ -47,6 +47,12 @@
       "expo-font",
       "expo-web-browser",
       [
+        "expo-audio",
+        {
+          "microphonePermission": "Clarity uses the microphone so you can capture thoughts by voice."
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#fdfbf7",

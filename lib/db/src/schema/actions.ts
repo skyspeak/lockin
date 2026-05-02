@@ -20,6 +20,7 @@ export const actionsTable = pgTable("actions", {
   status: actionStatusEnum("status").notNull().default("pending"),
   priority: priorityEnum("priority").notNull().default("medium"),
   thoughtId: integer("thought_id"),
+  snoozedUntil: timestamp("snoozed_until"),
   completedAt: timestamp("completed_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

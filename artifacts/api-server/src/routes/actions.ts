@@ -1,15 +1,15 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { actionsTable } from "@workspace/db";
-import { eq, desc, asc, sql } from "drizzle-orm";
+import { eq, desc, and, or, isNull, lte, sql } from "drizzle-orm";
 import {
   CreateActionBody,
   UpdateActionBody,
   ListActionsQueryParams,
-  GetActionQueueQueryParams,
-  GetActionParams,
   UpdateActionParams,
   DeleteActionParams,
+  SnoozeActionParams,
+  SnoozeActionBody,
 } from "@workspace/api-zod";
 
 const router = Router();
@@ -21,24 +21,30 @@ router.get("/", async (req, res) => {
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid query params" });
   }
-  const { category, status, limit, offset } = parsed.data;
+  const { status, includeSnoozed, limit, offset } = parsed.data;
 
-  let baseQuery = db.select().from(actionsTable).$dynamic();
-
-  if (category) {
-    baseQuery = baseQuery.where(eq(actionsTable.category, category));
+  const conditions = [];
+  if (status) conditions.push(eq(actionsTable.status, status));
+  if (!includeSnoozed) {
+    conditions.push(
+      or(isNull(actionsTable.snoozedUntil), lte(actionsTable.snoozedUntil, new Date())),
+    );
   }
-  if (status) {
-    baseQuery = baseQuery.where(eq(actionsTable.status, status));
-  }
 
-  const actions = await baseQuery
+  const where = conditions.length ? and(...conditions) : undefined;
+
+  const actions = await db
+    .select()
+    .from(actionsTable)
+    .where(where)
     .orderBy(PRIORITY_ORDER, desc(actionsTable.createdAt))
     .limit(limit)
     .offset(offset);
 
-  const countQuery = db.select({ count: sql<number>`count(*)::int` }).from(actionsTable);
-  const [{ count }] = await countQuery;
+  const [{ count }] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(actionsTable)
+    .where(where);
 
   return res.json({ actions, total: count });
 });
@@ -57,85 +63,44 @@ router.post("/", async (req, res) => {
   return res.status(201).json(action);
 });
 
-router.get("/queue", async (req, res) => {
-  const parsed = GetActionQueueQueryParams.safeParse(req.query);
-  if (!parsed.success) {
-    return res.status(400).json({ error: "Invalid query params" });
-  }
-
-  let baseQuery = db
+router.get("/queue", async (_req, res) => {
+  const queue = await db
     .select()
     .from(actionsTable)
-    .where(sql`status IN ('pending', 'in-progress')`)
-    .$dynamic();
+    .where(
+      and(
+        sql`status IN ('pending', 'in-progress')`,
+        or(isNull(actionsTable.snoozedUntil), lte(actionsTable.snoozedUntil, new Date())),
+      ),
+    )
+    .orderBy(PRIORITY_ORDER, desc(actionsTable.createdAt));
 
-  if (parsed.data.category) {
-    baseQuery = baseQuery.where(eq(actionsTable.category, parsed.data.category));
-  }
-
-  const queue = await baseQuery.orderBy(
-    asc(actionsTable.status),
-    PRIORITY_ORDER,
-    desc(actionsTable.createdAt),
-  );
-
-  return res.json({ queue, total: queue.length });
-});
-
-router.get("/summary", async (req, res) => {
-  const [totals] = await db
-    .select({
-      total: sql<number>`count(*)::int`,
-      pending: sql<number>`count(*) filter (where status = 'pending')::int`,
-      inProgress: sql<number>`count(*) filter (where status = 'in-progress')::int`,
-      done: sql<number>`count(*) filter (where status = 'done')::int`,
-      dismissed: sql<number>`count(*) filter (where status = 'dismissed')::int`,
-    })
-    .from(actionsTable);
-
-  const byCategory = await db
-    .select({
-      category: actionsTable.category,
-      pending: sql<number>`count(*) filter (where status = 'pending')::int`,
-      done: sql<number>`count(*) filter (where status = 'done')::int`,
-    })
+  const [{ snoozedCount }] = await db
+    .select({ snoozedCount: sql<number>`count(*)::int` })
     .from(actionsTable)
-    .groupBy(actionsTable.category);
+    .where(
+      and(
+        sql`status IN ('pending', 'in-progress')`,
+        sql`snoozed_until > NOW()`,
+      ),
+    );
 
-  return res.json({ ...totals, byCategory });
-});
-
-router.get("/:id", async (req, res) => {
-  const parsed = GetActionParams.safeParse({ id: Number(req.params.id) });
-  if (!parsed.success) {
-    return res.status(400).json({ error: "Invalid id" });
-  }
-
-  const [action] = await db
-    .select()
+  const [{ doneCount }] = await db
+    .select({ doneCount: sql<number>`count(*)::int` })
     .from(actionsTable)
-    .where(eq(actionsTable.id, parsed.data.id));
+    .where(eq(actionsTable.status, "done"));
 
-  if (!action) {
-    return res.status(404).json({ error: "Action not found" });
-  }
-
-  return res.json(action);
+  return res.json({ queue, snoozedCount, doneCount });
 });
 
 router.put("/:id", async (req, res) => {
   const paramParsed = UpdateActionParams.safeParse({ id: Number(req.params.id) });
-  if (!paramParsed.success) {
-    return res.status(400).json({ error: "Invalid id" });
-  }
+  if (!paramParsed.success) return res.status(400).json({ error: "Invalid id" });
 
   const bodyParsed = UpdateActionBody.safeParse(req.body);
-  if (!bodyParsed.success) {
-    return res.status(400).json({ error: "Invalid body" });
-  }
+  if (!bodyParsed.success) return res.status(400).json({ error: "Invalid body" });
 
   const updates: Record<string, unknown> = { ...bodyParsed.data, updatedAt: new Date() };
-
   if (bodyParsed.data.status === "done" || bodyParsed.data.status === "dismissed") {
     updates.completedAt = new Date();
   }
@@ -146,21 +111,35 @@ router.put("/:id", async (req, res) => {
     .where(eq(actionsTable.id, paramParsed.data.id))
     .returning();
 
-  if (!action) {
-    return res.status(404).json({ error: "Action not found" });
-  }
+  if (!action) return res.status(404).json({ error: "Action not found" });
+  return res.json(action);
+});
 
+router.post("/:id/snooze", async (req, res) => {
+  const paramParsed = SnoozeActionParams.safeParse({ id: Number(req.params.id) });
+  if (!paramParsed.success) return res.status(400).json({ error: "Invalid id" });
+
+  const bodyParsed = SnoozeActionBody.safeParse(req.body ?? {});
+  if (!bodyParsed.success) return res.status(400).json({ error: "Invalid body" });
+
+  const days = bodyParsed.data.days ?? 7;
+  const snoozedUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+
+  const [action] = await db
+    .update(actionsTable)
+    .set({ snoozedUntil, status: "pending", updatedAt: new Date() })
+    .where(eq(actionsTable.id, paramParsed.data.id))
+    .returning();
+
+  if (!action) return res.status(404).json({ error: "Action not found" });
   return res.json(action);
 });
 
 router.delete("/:id", async (req, res) => {
   const parsed = DeleteActionParams.safeParse({ id: Number(req.params.id) });
-  if (!parsed.success) {
-    return res.status(400).json({ error: "Invalid id" });
-  }
+  if (!parsed.success) return res.status(400).json({ error: "Invalid id" });
 
   await db.delete(actionsTable).where(eq(actionsTable.id, parsed.data.id));
-
   return res.status(204).send();
 });
 
