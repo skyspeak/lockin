@@ -43,6 +43,7 @@ const COLORS = {
   greenSoft: "#e8efe1",
   blue: "#3a6b8a",
   amber: "#b8862c",
+  red: "#c0392b",
 };
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
@@ -279,13 +280,6 @@ export default function HomeScreen() {
         }
         renderItem={({ item }) => (
           <View style={styles.card}>
-            <Pressable
-              onPress={() => handleDelete(item.id)}
-              hitSlop={10}
-              style={styles.closeBtn}
-            >
-              <Text style={styles.closeIcon}>×</Text>
-            </Pressable>
             <Text style={styles.cardTitle} numberOfLines={3}>
               {item.title}
             </Text>
@@ -294,6 +288,7 @@ export default function HomeScreen() {
               <ActionBtn label="Email" tint={COLORS.blue} onPress={() => handleEmail(item.title)} />
               <ActionBtn label="Text" tint={COLORS.accent} onPress={() => handleText(item.title)} />
               <ActionBtn label="Snooze" tint={COLORS.amber} onPress={() => handleSnooze(item.id)} />
+              <ActionBtn label="Delete" tint={COLORS.red} onPress={() => handleDelete(item.id)} />
             </View>
           </View>
         )}
@@ -362,22 +357,6 @@ const styles = StyleSheet.create({
     borderColor: COLORS.hairline,
     position: "relative",
   },
-  closeBtn: {
-    position: "absolute",
-    top: 8,
-    right: 10,
-    width: 28,
-    height: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 1,
-  },
-  closeIcon: {
-    fontSize: 22,
-    lineHeight: 24,
-    color: "#bdb6ad",
-    fontFamily: "Inter_400Regular",
-  },
   cardTitle: {
     fontFamily: "Inter_500Medium",
     fontSize: 16,
@@ -385,16 +364,17 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginBottom: 12,
   },
-  row: { flexDirection: "row", gap: 8 },
+  row: { flexDirection: "row", gap: 6 },
   btn: {
     flex: 1,
     paddingVertical: 9,
+    paddingHorizontal: 4,
     borderRadius: 10,
     borderWidth: 1,
     alignItems: "center",
     backgroundColor: "#fff",
   },
-  btnText: { fontFamily: "Inter_600SemiBold", fontSize: 13 },
+  btnText: { fontFamily: "Inter_600SemiBold", fontSize: 12 },
   empty: { paddingVertical: 60, alignItems: "center" },
   emptyText: {
     fontFamily: "Inter_400Regular",

@@ -8,7 +8,7 @@ import {
   useCreateAction,
   getGetActionQueueUrl,
 } from "@workspace/api-client-react";
-import { Mic, Square, Loader2, Check, Mail, MessageSquare, Moon, X } from "lucide-react";
+import { Mic, Square, Loader2, Check, Mail, MessageSquare, Moon, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -172,15 +172,8 @@ export default function Home() {
               key={a.id}
               className="rounded-2xl border border-[#ebe5dd] bg-white p-4 relative"
             >
-              <button
-                onClick={() => remove(a.id)}
-                className="absolute top-3 right-3 text-[#bdb6ad] hover:text-[#c8553d] transition-colors"
-                aria-label="Delete"
-              >
-                <X className="h-4 w-4" />
-              </button>
-              <p className="text-[15px] leading-snug font-medium pr-6 mb-3">{a.title}</p>
-              <div className="grid grid-cols-4 gap-2">
+              <p className="text-[15px] leading-snug font-medium mb-3">{a.title}</p>
+              <div className="grid grid-cols-5 gap-2">
                 <PillBtn icon={<Check className="h-4 w-4" />} label="Done" tint="#5d7a4a" onClick={() => complete(a.id)} />
                 <PillBtn icon={<Mail className="h-4 w-4" />} label="Email" tint="#3a6b8a" onClick={() => email(a.title)} />
                 <PillBtn icon={<MessageSquare className="h-4 w-4" />} label="Text" tint="#c8553d" onClick={() => text(a.title)} />
@@ -209,6 +202,14 @@ export default function Home() {
                     </button>
                   </PopoverContent>
                 </Popover>
+                <button
+                  onClick={() => remove(a.id)}
+                  aria-label="Delete"
+                  className="flex items-center justify-center gap-1.5 rounded-lg border bg-white py-2 text-xs font-semibold text-[#c0392b] border-[#c0392b33] transition-colors hover:bg-[#c0392b10] active:scale-95"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete
+                </button>
               </div>
             </li>
           ))}
