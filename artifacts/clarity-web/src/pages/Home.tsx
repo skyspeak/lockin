@@ -8,8 +8,9 @@ import {
   useCreateAction,
   getGetActionQueueUrl,
 } from "@workspace/api-client-react";
-import { Mic, Square, Loader2, Check, Mail, MessageSquare, Moon, Trash2 } from "lucide-react";
+import { Mic, Square, Loader2, Check, Mail, MessageSquare, Moon, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 type Action = {
   id: number;
@@ -106,12 +107,13 @@ export default function Home() {
     await updateAction.mutateAsync({ id, data: { status: "done" } });
     invalidate();
   };
-  const snooze = async (id: number) => {
-    await snoozeAction.mutateAsync({ id, data: { days: 7 } });
+  const snooze = async (id: number, days: number) => {
+    await snoozeAction.mutateAsync({ id, data: { days } });
     invalidate();
-    toast({ title: "Snoozed for a week" });
+    toast({ title: days === 1 ? "Snoozed until tomorrow" : `Snoozed for ${days} days` });
   };
   const remove = async (id: number) => {
+    if (!window.confirm("Delete this action?")) return;
     await deleteAction.mutateAsync({ id });
     invalidate();
   };
@@ -168,23 +170,45 @@ export default function Home() {
           {queue.map((a) => (
             <li
               key={a.id}
-              className="rounded-2xl border border-[#ebe5dd] bg-white p-4 group"
+              className="rounded-2xl border border-[#ebe5dd] bg-white p-4 relative"
             >
-              <div className="flex items-start justify-between gap-3 mb-3">
-                <p className="text-[15px] leading-snug font-medium flex-1">{a.title}</p>
-                <button
-                  onClick={() => remove(a.id)}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity text-[#7a716b] hover:text-[#c8553d]"
-                  aria-label="Delete"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
+              <button
+                onClick={() => remove(a.id)}
+                className="absolute top-3 right-3 text-[#bdb6ad] hover:text-[#c8553d] transition-colors"
+                aria-label="Delete"
+              >
+                <X className="h-4 w-4" />
+              </button>
+              <p className="text-[15px] leading-snug font-medium pr-6 mb-3">{a.title}</p>
               <div className="grid grid-cols-4 gap-2">
                 <PillBtn icon={<Check className="h-4 w-4" />} label="Done" tint="#5d7a4a" onClick={() => complete(a.id)} />
                 <PillBtn icon={<Mail className="h-4 w-4" />} label="Email" tint="#3a6b8a" onClick={() => email(a.title)} />
                 <PillBtn icon={<MessageSquare className="h-4 w-4" />} label="Text" tint="#c8553d" onClick={() => text(a.title)} />
-                <PillBtn icon={<Moon className="h-4 w-4" />} label="Snooze 1w" tint="#b8862c" onClick={() => snooze(a.id)} />
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      className="flex items-center justify-center gap-1.5 rounded-lg border bg-white py-2 text-xs font-semibold transition-colors hover:bg-[#b8862c10] active:scale-95"
+                      style={{ color: "#b8862c", borderColor: "#b8862c33" }}
+                    >
+                      <Moon className="h-4 w-4" />
+                      Snooze
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-36 p-1" align="end">
+                    <button
+                      onClick={() => snooze(a.id, 1)}
+                      className="w-full text-left rounded-md px-3 py-2 text-sm font-medium hover:bg-[#fbeae5]"
+                    >
+                      1 day
+                    </button>
+                    <button
+                      onClick={() => snooze(a.id, 7)}
+                      className="w-full text-left rounded-md px-3 py-2 text-sm font-medium hover:bg-[#fbeae5]"
+                    >
+                      1 week
+                    </button>
+                  </PopoverContent>
+                </Popover>
               </div>
             </li>
           ))}

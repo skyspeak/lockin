@@ -167,31 +167,27 @@ export default function HomeScreen() {
     [updateAction, invalidateQueue],
   );
 
-  const handleSnooze = useCallback(
-    async (id: number) => {
+  const doSnooze = useCallback(
+    async (id: number, days: number) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      await snoozeAction.mutateAsync({ id, data: { days: 7 } });
+      await snoozeAction.mutateAsync({ id, data: { days } });
       invalidateQueue();
     },
     [snoozeAction, invalidateQueue],
   );
 
-  const handleEmail = useCallback((title: string) => {
-    const body = encodeURIComponent(title);
-    const gmail = `googlegmail://co?body=${body}`;
-    const mailto = `mailto:?body=${body}`;
-    Linking.canOpenURL(gmail).then((ok) => {
-      Linking.openURL(ok ? gmail : mailto).catch(() => Linking.openURL(mailto));
-    });
-  }, []);
+  const handleSnooze = useCallback(
+    (id: number) => {
+      Alert.alert("Snooze for…", undefined, [
+        { text: "1 day", onPress: () => doSnooze(id, 1) },
+        { text: "1 week", onPress: () => doSnooze(id, 7) },
+        { text: "Cancel", style: "cancel" },
+      ]);
+    },
+    [doSnooze],
+  );
 
-  const handleText = useCallback((title: string) => {
-    const body = encodeURIComponent(title);
-    const url = Platform.OS === "ios" ? `sms:&body=${body}` : `sms:?body=${body}`;
-    Linking.openURL(url).catch(() => {});
-  }, []);
-
-  const handleLongPress = useCallback(
+  const handleDelete = useCallback(
     (id: number) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       Alert.alert("Delete this action?", undefined, [
@@ -208,6 +204,21 @@ export default function HomeScreen() {
     },
     [deleteAction, invalidateQueue],
   );
+
+  const handleEmail = useCallback((title: string) => {
+    const body = encodeURIComponent(title);
+    const gmail = `googlegmail://co?body=${body}`;
+    const mailto = `mailto:?body=${body}`;
+    Linking.canOpenURL(gmail).then((ok) => {
+      Linking.openURL(ok ? gmail : mailto).catch(() => Linking.openURL(mailto));
+    });
+  }, []);
+
+  const handleText = useCallback((title: string) => {
+    const body = encodeURIComponent(title);
+    const url = Platform.OS === "ios" ? `sms:&body=${body}` : `sms:?body=${body}`;
+    Linking.openURL(url).catch(() => {});
+  }, []);
 
   const queue = (data?.queue ?? []) as Action[];
 
@@ -267,10 +278,14 @@ export default function HomeScreen() {
           ) : null
         }
         renderItem={({ item }) => (
-          <Pressable
-            onLongPress={() => handleLongPress(item.id)}
-            style={styles.card}
-          >
+          <View style={styles.card}>
+            <Pressable
+              onPress={() => handleDelete(item.id)}
+              hitSlop={10}
+              style={styles.closeBtn}
+            >
+              <Text style={styles.closeIcon}>×</Text>
+            </Pressable>
             <Text style={styles.cardTitle} numberOfLines={3}>
               {item.title}
             </Text>
@@ -278,9 +293,9 @@ export default function HomeScreen() {
               <ActionBtn label="Done" tint={COLORS.green} onPress={() => handleComplete(item.id)} />
               <ActionBtn label="Email" tint={COLORS.blue} onPress={() => handleEmail(item.title)} />
               <ActionBtn label="Text" tint={COLORS.accent} onPress={() => handleText(item.title)} />
-              <ActionBtn label="Snooze 1w" tint={COLORS.amber} onPress={() => handleSnooze(item.id)} />
+              <ActionBtn label="Snooze" tint={COLORS.amber} onPress={() => handleSnooze(item.id)} />
             </View>
-          </Pressable>
+          </View>
         )}
       />
     </SafeAreaView>
@@ -345,6 +360,23 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     borderWidth: 1,
     borderColor: COLORS.hairline,
+    position: "relative",
+  },
+  closeBtn: {
+    position: "absolute",
+    top: 8,
+    right: 10,
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1,
+  },
+  closeIcon: {
+    fontSize: 22,
+    lineHeight: 24,
+    color: "#bdb6ad",
+    fontFamily: "Inter_400Regular",
   },
   cardTitle: {
     fontFamily: "Inter_500Medium",
