@@ -3,20 +3,23 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Clarity — thought capture and action queue API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: thoughts
+    description: Thought capture and management
+  - name: actions
+    description: Action queue management
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +27,307 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /thoughts:
+    get:
+      operationId: listThoughts
+      tags: [thoughts]
+      summary: List all thoughts
+      parameters:
+        - name: category
+          in: query
+          schema:
+            $ref: "#/components/schemas/Category"
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: List of thoughts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  thoughts:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Thought"
+                  total:
+                    type: integer
+                required: [thoughts, total]
+    post:
+      operationId: createThought
+      tags: [thoughts]
+      summary: Capture a new thought
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateThoughtBody"
+      responses:
+        "201":
+          description: Thought created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Thought"
+
+  /thoughts/stats:
+    get:
+      operationId: getThoughtsStats
+      tags: [thoughts]
+      summary: Thought statistics by category and recent activity
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThoughtsStats"
+
+  /thoughts/{id}:
+    get:
+      operationId: getThought
+      tags: [thoughts]
+      summary: Get a single thought
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Thought
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Thought"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updateThought
+      tags: [thoughts]
+      summary: Update a thought
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateThoughtBody"
+      responses:
+        "200":
+          description: Updated thought
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Thought"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteThought
+      tags: [thoughts]
+      summary: Delete a thought
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /actions:
+    get:
+      operationId: listActions
+      tags: [actions]
+      summary: List all actions
+      parameters:
+        - name: category
+          in: query
+          schema:
+            $ref: "#/components/schemas/Category"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/ActionStatus"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: List of actions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  actions:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Action"
+                  total:
+                    type: integer
+                required: [actions, total]
+    post:
+      operationId: createAction
+      tags: [actions]
+      summary: Create a new action item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateActionBody"
+      responses:
+        "201":
+          description: Action created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Action"
+
+  /actions/queue:
+    get:
+      operationId: getActionQueue
+      tags: [actions]
+      summary: Get the prioritized action queue (pending items ordered by priority then category)
+      parameters:
+        - name: category
+          in: query
+          schema:
+            $ref: "#/components/schemas/Category"
+      responses:
+        "200":
+          description: Ordered action queue
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  queue:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Action"
+                  total:
+                    type: integer
+                required: [queue, total]
+
+  /actions/summary:
+    get:
+      operationId: getActionsSummary
+      tags: [actions]
+      summary: Action counts by status and category
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionsSummary"
+
+  /actions/{id}:
+    get:
+      operationId: getAction
+      tags: [actions]
+      summary: Get a single action
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Action
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Action"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updateAction
+      tags: [actions]
+      summary: Update an action (status, priority, etc.)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateActionBody"
+      responses:
+        "200":
+          description: Updated action
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Action"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteAction
+      tags: [actions]
+      summary: Delete an action
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
 components:
   schemas:
     HealthStatus:
@@ -31,6 +335,178 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+
+    Category:
+      type: string
+      enum:
+        - work
+        - side-projects
+        - family
+        - finance
+        - personal
+        - health
+        - other
+
+    ActionStatus:
+      type: string
+      enum:
+        - pending
+        - in-progress
+        - done
+        - dismissed
+
+    Priority:
+      type: string
+      enum:
+        - low
+        - medium
+        - high
+
+    Thought:
+      type: object
+      properties:
+        id:
+          type: integer
+        content:
+          type: string
+        category:
+          $ref: "#/components/schemas/Category"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, content, category, createdAt, updatedAt]
+
+    CreateThoughtBody:
+      type: object
+      properties:
+        content:
+          type: string
+        category:
+          $ref: "#/components/schemas/Category"
+      required: [content, category]
+
+    UpdateThoughtBody:
+      type: object
+      properties:
+        content:
+          type: string
+        category:
+          $ref: "#/components/schemas/Category"
+
+    ThoughtsStats:
+      type: object
+      properties:
+        total:
+          type: integer
+        byCategory:
+          type: array
+          items:
+            type: object
+            properties:
+              category:
+                $ref: "#/components/schemas/Category"
+              count:
+                type: integer
+            required: [category, count]
+        recentCount:
+          type: integer
+          description: Thoughts added in the last 24 hours
+      required: [total, byCategory, recentCount]
+
+    Action:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        category:
+          $ref: "#/components/schemas/Category"
+        status:
+          $ref: "#/components/schemas/ActionStatus"
+        priority:
+          $ref: "#/components/schemas/Priority"
+        thoughtId:
+          type: integer
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, title, category, status, priority, createdAt, updatedAt]
+
+    CreateActionBody:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        category:
+          $ref: "#/components/schemas/Category"
+        priority:
+          $ref: "#/components/schemas/Priority"
+        thoughtId:
+          type: integer
+      required: [title, category, priority]
+
+    UpdateActionBody:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        category:
+          $ref: "#/components/schemas/Category"
+        status:
+          $ref: "#/components/schemas/ActionStatus"
+        priority:
+          $ref: "#/components/schemas/Priority"
+
+    ActionsSummary:
+      type: object
+      properties:
+        total:
+          type: integer
+        pending:
+          type: integer
+        inProgress:
+          type: integer
+        done:
+          type: integer
+        dismissed:
+          type: integer
+        byCategory:
+          type: array
+          items:
+            type: object
+            properties:
+              category:
+                $ref: "#/components/schemas/Category"
+              pending:
+                type: integer
+              done:
+                type: integer
+            required: [category, pending, done]
+      required: [total, pending, inProgress, done, dismissed, byCategory]

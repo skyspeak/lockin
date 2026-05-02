@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "khl_ExMEC7DL8BtQQZJwR"
+uri = "file://artifacts/clarity-mobile/assets/images/icon.png"
+type = "image"
+title = "clarity app icon"
