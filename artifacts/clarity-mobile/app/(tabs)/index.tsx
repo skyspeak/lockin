@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import {
   View,
   Text,
@@ -8,12 +8,25 @@ import {
   Platform,
   useColorScheme,
   ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useGetThoughtsStats, useGetActionsSummary, useListThoughts, useGetActionQueue } from "@workspace/api-client-react";
+import {
+  useGetThoughtsStats,
+  useGetActionsSummary,
+  useListThoughts,
+  useGetActionQueue,
+} from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  getListThoughtsQueryKey,
+  getGetThoughtsStatsQueryKey,
+  getGetActionQueueQueryKey,
+  getGetActionsSummaryQueryKey,
+} from "@workspace/api-client-react";
 
 const CATEGORY_LABELS: Record<string, string> = {
   work: "Work",
@@ -25,33 +38,53 @@ const CATEGORY_LABELS: Record<string, string> = {
   other: "Other",
 };
 
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning.";
+  if (hour < 17) return "Good afternoon.";
+  return "Good evening.";
+}
+
 export default function HomeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
+  const isDark = useColorScheme() === "dark";
   const router = useRouter();
+  const queryClient = useQueryClient();
 
-  const { data: stats, isLoading: statsLoading } = useGetThoughtsStats();
-  const { data: summary, isLoading: summaryLoading } = useGetActionsSummary();
-  const { data: recentThoughts, isLoading: thoughtsLoading } = useListThoughts({ limit: 3 });
-  const { data: queue, isLoading: queueLoading } = useGetActionQueue();
+  const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useGetThoughtsStats();
+  const { data: summary, isLoading: summaryLoading, refetch: refetchSummary } = useGetActionsSummary();
+  const { data: recentThoughts, isLoading: thoughtsLoading, refetch: refetchThoughts } = useListThoughts({ limit: 3 });
+  const { data: queue, isLoading: queueLoading, refetch: refetchQueue } = useGetActionQueue();
+
+  const isRefreshing = statsLoading || summaryLoading || thoughtsLoading || queueLoading;
+
+  const onRefresh = async () => {
+    await Promise.all([refetchStats(), refetchSummary(), refetchThoughts(), refetchQueue()]);
+  };
 
   const topInset = Platform.OS === "web" ? 67 : insets.top;
-  const bottomInset = Platform.OS === "web" ? 34 : 0;
-
   const styles = makeStyles(colors, isDark);
+
+  const priorityItems = (queue?.queue ?? []).slice(0, 3);
 
   return (
     <ScrollView
       style={[styles.container, { paddingTop: topInset }]}
-      contentContainerStyle={[styles.content, { paddingBottom: bottomInset + 120 }]}
+      contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 100 }]}
       showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={false}
+          onRefresh={onRefresh}
+          tintColor={colors.primary}
+        />
+      }
     >
       <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>Good day.</Text>
-          <Text style={styles.subtitle}>Clear your mind.</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.greeting}>{getGreeting()}</Text>
+          <Text style={styles.subtitle}>Clear your mind. Organize your day.</Text>
         </View>
         <View style={[styles.logoMark, { backgroundColor: colors.primary }]}>
           <Feather name="zap" size={18} color="#fff" />
@@ -60,59 +93,112 @@ export default function HomeScreen() {
 
       <View style={styles.statsRow}>
         <StatCard
-          label="Today"
-          value={statsLoading ? "—" : String(stats?.recentCount ?? 0)}
-          icon="brain"
+          label="Captured Today"
+          value={statsLoading ? "–" : String(stats?.recentCount ?? 0)}
+          icon="cpu"
           color={colors.primary}
           colors={colors}
-          isDark={isDark}
         />
         <StatCard
           label="Pending"
-          value={summaryLoading ? "—" : String(summary?.pending ?? 0)}
+          value={summaryLoading ? "–" : String(summary?.pending ?? 0)}
           icon="list"
           color={colors.secondary}
           colors={colors}
-          isDark={isDark}
         />
         <StatCard
           label="Done"
-          value={summaryLoading ? "—" : String(summary?.done ?? 0)}
+          value={summaryLoading ? "–" : String(summary?.done ?? 0)}
           icon="check-circle"
           color="#16a34a"
           colors={colors}
-          isDark={isDark}
         />
       </View>
 
-      <SectionHeader title="Action Queue" onPress={() => router.push("/(tabs)/queue")} colors={colors} />
+      <TouchableOpacity
+        style={[styles.capturePrompt, { backgroundColor: colors.card, borderColor: colors.border }]}
+        onPress={() => router.push("/(tabs)/capture")}
+        activeOpacity={0.85}
+      >
+        <Feather name="edit-3" size={15} color={colors.mutedForeground} />
+        <Text style={[styles.capturePromptText, { color: colors.mutedForeground }]}>
+          What's on your mind?
+        </Text>
+        <View style={[styles.captureChip, { backgroundColor: colors.primary }]}>
+          <Text style={styles.captureChipText}>Capture</Text>
+        </View>
+      </TouchableOpacity>
+
+      <SectionHeader
+        title="Action Queue"
+        count={summary?.pending}
+        onPress={() => router.push("/(tabs)/queue")}
+        colors={colors}
+      />
       {queueLoading ? (
-        <ActivityIndicator color={colors.primary} style={{ marginVertical: 16 }} />
-      ) : queue?.queue.length === 0 ? (
-        <EmptyState icon="inbox" message="Queue is clear" colors={colors} />
+        <ActivityIndicator color={colors.primary} style={{ marginVertical: 20 }} />
+      ) : priorityItems.length === 0 ? (
+        <EmptyCard icon="inbox" message="Queue is clear — nice work." colors={colors} />
       ) : (
-        <View style={styles.card}>
-          {(queue?.queue ?? []).slice(0, 3).map((action, idx) => (
-            <View key={action.id} style={[styles.queueItem, idx > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}>
-              <View style={[styles.priorityDot, { backgroundColor: action.priority === "high" ? colors.priorityHighText : action.priority === "medium" ? colors.priorityMediumText : colors.priorityLowText }]} />
-              <Text style={[styles.queueItemTitle, { color: colors.foreground }]} numberOfLines={1}>{action.title}</Text>
-              <Text style={[styles.queueItemCat, { color: colors.mutedForeground }]}>{CATEGORY_LABELS[action.category] ?? action.category}</Text>
-            </View>
-          ))}
+        <View style={[styles.listCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          {priorityItems.map((action, idx) => {
+            const pColor =
+              action.priority === "high"
+                ? colors.priorityHighText
+                : action.priority === "medium"
+                ? colors.priorityMediumText
+                : colors.priorityLowText;
+            return (
+              <View
+                key={action.id}
+                style={[
+                  styles.listRow,
+                  idx > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+                ]}
+              >
+                <View style={[styles.priorityBar, { backgroundColor: pColor }]} />
+                <Text style={[styles.listRowTitle, { color: colors.foreground }]} numberOfLines={1}>
+                  {action.title}
+                </Text>
+                <Text style={[styles.listRowMeta, { color: colors.mutedForeground }]}>
+                  {CATEGORY_LABELS[action.category] ?? action.category}
+                </Text>
+              </View>
+            );
+          })}
         </View>
       )}
 
-      <SectionHeader title="Recent Thoughts" onPress={() => router.push("/(tabs)/thoughts")} colors={colors} />
+      <SectionHeader
+        title="Recent Thoughts"
+        onPress={() => router.push("/(tabs)/thoughts")}
+        colors={colors}
+      />
       {thoughtsLoading ? (
-        <ActivityIndicator color={colors.primary} style={{ marginVertical: 16 }} />
-      ) : recentThoughts?.thoughts.length === 0 ? (
-        <EmptyState icon="feather" message="No thoughts captured yet" colors={colors} />
+        <ActivityIndicator color={colors.primary} style={{ marginVertical: 20 }} />
+      ) : (recentThoughts?.thoughts.length ?? 0) === 0 ? (
+        <EmptyCard icon="feather" message="No thoughts captured yet." colors={colors} />
       ) : (
-        <View style={styles.card}>
+        <View style={[styles.listCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           {(recentThoughts?.thoughts ?? []).map((thought, idx) => (
-            <View key={thought.id} style={[styles.thoughtItem, idx > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}>
-              <Text style={[styles.thoughtContent, { color: colors.foreground }]} numberOfLines={2}>{thought.content}</Text>
-              <Text style={[styles.thoughtMeta, { color: colors.mutedForeground }]}>{CATEGORY_LABELS[thought.category] ?? thought.category} · {new Date(thought.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</Text>
+            <View
+              key={thought.id}
+              style={[
+                styles.thoughtRow,
+                idx > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+              ]}
+            >
+              <Text style={[styles.thoughtContent, { color: colors.foreground }]} numberOfLines={2}>
+                {thought.content}
+              </Text>
+              <Text style={[styles.thoughtMeta, { color: colors.mutedForeground }]}>
+                {CATEGORY_LABELS[thought.category] ?? thought.category}
+                {" · "}
+                {new Date(thought.createdAt).toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                })}
+              </Text>
             </View>
           ))}
         </View>
@@ -121,34 +207,119 @@ export default function HomeScreen() {
   );
 }
 
-function StatCard({ label, value, icon, color, colors, isDark }: { label: string; value: string; icon: string; color: string; colors: ReturnType<typeof useColors>; isDark: boolean }) {
+function StatCard({
+  label,
+  value,
+  icon,
+  color,
+  colors,
+}: {
+  label: string;
+  value: string;
+  icon: string;
+  color: string;
+  colors: ReturnType<typeof useColors>;
+}) {
   return (
-    <View style={[{ flex: 1, backgroundColor: isDark ? colors.card : colors.muted, borderRadius: 14, padding: 14, alignItems: "center", gap: 6 }]}>
-      <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: color + "20", alignItems: "center", justifyContent: "center" }}>
-        <Feather name={icon as any} size={18} color={color} />
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: colors.card,
+        borderRadius: 16,
+        padding: 14,
+        alignItems: "flex-start",
+        gap: 10,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: colors.border,
+      }}
+    >
+      <View
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: 10,
+          backgroundColor: color + "18",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Feather name={icon as any} size={16} color={color} />
       </View>
-      <Text style={{ fontSize: 24, fontWeight: "700", color: colors.foreground, fontFamily: "Inter_700Bold" }}>{value}</Text>
-      <Text style={{ fontSize: 11, color: colors.mutedForeground, fontFamily: "Inter_400Regular" }}>{label}</Text>
+      <View>
+        <Text
+          style={{
+            fontSize: 26,
+            fontWeight: "700",
+            color: colors.foreground,
+            fontFamily: "Inter_700Bold",
+            lineHeight: 30,
+          }}
+        >
+          {value}
+        </Text>
+        <Text
+          style={{
+            fontSize: 11,
+            color: colors.mutedForeground,
+            fontFamily: "Inter_400Regular",
+            marginTop: 2,
+          }}
+        >
+          {label}
+        </Text>
+      </View>
     </View>
   );
 }
 
-function SectionHeader({ title, onPress, colors }: { title: string; onPress: () => void; colors: ReturnType<typeof useColors> }) {
+function SectionHeader({
+  title,
+  count,
+  onPress,
+  colors,
+}: {
+  title: string;
+  count?: number;
+  onPress: () => void;
+  colors: ReturnType<typeof useColors>;
+}) {
   return (
-    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 28, marginBottom: 12 }}>
-      <Text style={{ fontSize: 17, fontWeight: "600", color: colors.foreground, fontFamily: "Inter_600SemiBold" }}>{title}</Text>
-      <TouchableOpacity onPress={onPress}>
-        <Text style={{ fontSize: 13, color: colors.primary, fontFamily: "Inter_500Medium" }}>See all</Text>
+    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 30, marginBottom: 12 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <Text style={{ fontSize: 17, fontWeight: "600", color: colors.foreground, fontFamily: "Inter_600SemiBold" }}>
+          {title}
+        </Text>
+        {count !== undefined && count > 0 && (
+          <View style={{ backgroundColor: colors.primary, borderRadius: 10, minWidth: 20, height: 20, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 }}>
+            <Text style={{ fontSize: 11, color: "#fff", fontFamily: "Inter_600SemiBold" }}>{count}</Text>
+          </View>
+        )}
+      </View>
+      <TouchableOpacity onPress={onPress} style={{ paddingLeft: 8 }}>
+        <Text style={{ fontSize: 14, color: colors.primary, fontFamily: "Inter_500Medium" }}>See all</Text>
       </TouchableOpacity>
     </View>
   );
 }
 
-function EmptyState({ icon, message, colors }: { icon: string; message: string; colors: ReturnType<typeof useColors> }) {
+function EmptyCard({ icon, message, colors }: { icon: string; message: string; colors: ReturnType<typeof useColors> }) {
   return (
-    <View style={{ alignItems: "center", paddingVertical: 28, gap: 8, borderRadius: 14, borderWidth: 1, borderColor: colors.border, borderStyle: "dashed" }}>
-      <Feather name={icon as any} size={24} color={colors.mutedForeground} />
-      <Text style={{ fontSize: 13, color: colors.mutedForeground, fontFamily: "Inter_400Regular" }}>{message}</Text>
+    <View
+      style={{
+        alignItems: "center",
+        paddingVertical: 32,
+        gap: 8,
+        borderRadius: 16,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: colors.border,
+        borderStyle: "dashed",
+        backgroundColor: colors.muted,
+      }}
+    >
+      <Feather name={icon as any} size={22} color={colors.mutedForeground} />
+      <Text style={{ fontSize: 13, color: colors.mutedForeground, fontFamily: "Inter_400Regular" }}>
+        {message}
+      </Text>
     </View>
   );
 }
@@ -157,17 +328,63 @@ function makeStyles(colors: ReturnType<typeof useColors>, isDark: boolean) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     content: { paddingHorizontal: 20 },
-    header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, paddingTop: 8 },
-    greeting: { fontSize: 30, fontWeight: "700", color: colors.foreground, fontFamily: "Inter_700Bold" },
-    subtitle: { fontSize: 15, color: colors.mutedForeground, fontFamily: "Inter_400Regular", marginTop: 2 },
-    logoMark: { width: 44, height: 44, borderRadius: 13, alignItems: "center", justifyContent: "center" },
-    statsRow: { flexDirection: "row", gap: 10, marginBottom: 4 },
-    card: { backgroundColor: colors.card, borderRadius: 14, borderWidth: 1, borderColor: colors.border, overflow: "hidden" },
-    queueItem: { flexDirection: "row", alignItems: "center", paddingVertical: 13, paddingHorizontal: 16, gap: 10 },
-    priorityDot: { width: 8, height: 8, borderRadius: 4 },
-    queueItemTitle: { flex: 1, fontSize: 14, fontFamily: "Inter_500Medium" },
-    queueItemCat: { fontSize: 12, fontFamily: "Inter_400Regular" },
-    thoughtItem: { paddingVertical: 13, paddingHorizontal: 16 },
+    header: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      marginBottom: 22,
+      paddingTop: 8,
+    },
+    greeting: {
+      fontSize: 32,
+      fontWeight: "700",
+      color: colors.foreground,
+      fontFamily: "Inter_700Bold",
+      letterSpacing: -0.5,
+    },
+    subtitle: {
+      fontSize: 14,
+      color: colors.mutedForeground,
+      fontFamily: "Inter_400Regular",
+      marginTop: 3,
+    },
+    logoMark: {
+      width: 44,
+      height: 44,
+      borderRadius: 14,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    statsRow: { flexDirection: "row", gap: 10, marginBottom: 18 },
+    capturePrompt: {
+      flexDirection: "row",
+      alignItems: "center",
+      borderRadius: 14,
+      borderWidth: StyleSheet.hairlineWidth,
+      paddingHorizontal: 14,
+      paddingVertical: 13,
+      gap: 10,
+      marginBottom: 4,
+    },
+    capturePromptText: { flex: 1, fontSize: 14, fontFamily: "Inter_400Regular" },
+    captureChip: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5 },
+    captureChipText: { fontSize: 12, color: "#fff", fontFamily: "Inter_600SemiBold" },
+    listCard: {
+      borderRadius: 16,
+      borderWidth: StyleSheet.hairlineWidth,
+      overflow: "hidden",
+    },
+    listRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 13,
+      paddingHorizontal: 16,
+      gap: 10,
+    },
+    priorityBar: { width: 3, height: 18, borderRadius: 2, flexShrink: 0 },
+    listRowTitle: { flex: 1, fontSize: 14, fontFamily: "Inter_500Medium" },
+    listRowMeta: { fontSize: 12, fontFamily: "Inter_400Regular" },
+    thoughtRow: { paddingVertical: 13, paddingHorizontal: 16 },
     thoughtContent: { fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 20 },
     thoughtMeta: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 4 },
   });

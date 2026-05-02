@@ -5,18 +5,35 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "clarity-mobile",
+    "scheme": "clarity",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#1c2331"
+      "backgroundColor": "#fdfbf7"
     },
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "bundleIdentifier": "com.clarity.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Clarity uses the microphone so you can dictate thoughts hands-free.",
+        "NSCameraUsageDescription": "Clarity uses the camera to attach photos to thoughts.",
+        "UIBackgroundModes": []
+      },
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
-    "android": {},
+    "android": {
+      "package": "com.clarity.app",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#fdfbf7"
+      }
+    },
     "web": {
       "favicon": "./assets/images/icon.png"
     },
@@ -28,7 +45,15 @@
         }
       ],
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#fdfbf7",
+          "image": "./assets/images/icon.png",
+          "imageWidth": 200
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
