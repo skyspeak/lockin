@@ -113,7 +113,7 @@ export function useHealthCheck<
 }
 
 /**
- * @summary List all actions
+ * @summary List all actions for the authenticated user
  */
 export const getListActionsUrl = (params?: ListActionsParams) => {
   const normalizedParams = new URLSearchParams();
@@ -147,7 +147,7 @@ export const getListActionsQueryKey = (params?: ListActionsParams) => {
 
 export const getListActionsQueryOptions = <
   TData = Awaited<ReturnType<typeof listActions>>,
-  TError = ErrorType<unknown>,
+  TError = ErrorType<ErrorResponse>,
 >(
   params?: ListActionsParams,
   options?: {
@@ -177,15 +177,15 @@ export const getListActionsQueryOptions = <
 export type ListActionsQueryResult = NonNullable<
   Awaited<ReturnType<typeof listActions>>
 >;
-export type ListActionsQueryError = ErrorType<unknown>;
+export type ListActionsQueryError = ErrorType<ErrorResponse>;
 
 /**
- * @summary List all actions
+ * @summary List all actions for the authenticated user
  */
 
 export function useListActions<
   TData = Awaited<ReturnType<typeof listActions>>,
-  TError = ErrorType<unknown>,
+  TError = ErrorType<ErrorResponse>,
 >(
   params?: ListActionsParams,
   options?: {
@@ -207,7 +207,7 @@ export function useListActions<
 }
 
 /**
- * @summary Create a new action item
+ * @summary Create a new action item for the authenticated user
  */
 export const getCreateActionUrl = () => {
   return `/api/actions`;
@@ -226,7 +226,7 @@ export const createAction = async (
 };
 
 export const getCreateActionMutationOptions = <
-  TError = ErrorType<unknown>,
+  TError = ErrorType<ErrorResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -267,13 +267,13 @@ export type CreateActionMutationResult = NonNullable<
   Awaited<ReturnType<typeof createAction>>
 >;
 export type CreateActionMutationBody = BodyType<CreateActionBody>;
-export type CreateActionMutationError = ErrorType<unknown>;
+export type CreateActionMutationError = ErrorType<ErrorResponse>;
 
 /**
- * @summary Create a new action item
+ * @summary Create a new action item for the authenticated user
  */
 export const useCreateAction = <
-  TError = ErrorType<unknown>,
+  TError = ErrorType<ErrorResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -293,7 +293,7 @@ export const useCreateAction = <
 };
 
 /**
- * @summary Get the active action queue (excludes snoozed and completed)
+ * @summary Get the active action queue for the authenticated user
  */
 export const getGetActionQueueUrl = () => {
   return `/api/actions/queue`;
@@ -314,7 +314,7 @@ export const getGetActionQueueQueryKey = () => {
 
 export const getGetActionQueueQueryOptions = <
   TData = Awaited<ReturnType<typeof getActionQueue>>,
-  TError = ErrorType<unknown>,
+  TError = ErrorType<ErrorResponse>,
 >(options?: {
   query?: UseQueryOptions<
     Awaited<ReturnType<typeof getActionQueue>>,
@@ -341,15 +341,15 @@ export const getGetActionQueueQueryOptions = <
 export type GetActionQueueQueryResult = NonNullable<
   Awaited<ReturnType<typeof getActionQueue>>
 >;
-export type GetActionQueueQueryError = ErrorType<unknown>;
+export type GetActionQueueQueryError = ErrorType<ErrorResponse>;
 
 /**
- * @summary Get the active action queue (excludes snoozed and completed)
+ * @summary Get the active action queue for the authenticated user
  */
 
 export function useGetActionQueue<
   TData = Awaited<ReturnType<typeof getActionQueue>>,
-  TError = ErrorType<unknown>,
+  TError = ErrorType<ErrorResponse>,
 >(options?: {
   query?: UseQueryOptions<
     Awaited<ReturnType<typeof getActionQueue>>,
@@ -368,7 +368,7 @@ export function useGetActionQueue<
 }
 
 /**
- * @summary Update an action (status, snooze, etc.)
+ * @summary Update an action owned by the authenticated user
  */
 export const getUpdateActionUrl = (id: number) => {
   return `/api/actions/${id}`;
@@ -432,7 +432,7 @@ export type UpdateActionMutationBody = BodyType<UpdateActionBody>;
 export type UpdateActionMutationError = ErrorType<ErrorResponse>;
 
 /**
- * @summary Update an action (status, snooze, etc.)
+ * @summary Update an action owned by the authenticated user
  */
 export const useUpdateAction = <
   TError = ErrorType<ErrorResponse>,
@@ -455,7 +455,7 @@ export const useUpdateAction = <
 };
 
 /**
- * @summary Delete an action
+ * @summary Delete an action owned by the authenticated user
  */
 export const getDeleteActionUrl = (id: number) => {
   return `/api/actions/${id}`;
@@ -472,7 +472,7 @@ export const deleteAction = async (
 };
 
 export const getDeleteActionMutationOptions = <
-  TError = ErrorType<unknown>,
+  TError = ErrorType<ErrorResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -513,13 +513,13 @@ export type DeleteActionMutationResult = NonNullable<
   Awaited<ReturnType<typeof deleteAction>>
 >;
 
-export type DeleteActionMutationError = ErrorType<unknown>;
+export type DeleteActionMutationError = ErrorType<ErrorResponse>;
 
 /**
- * @summary Delete an action
+ * @summary Delete an action owned by the authenticated user
  */
 export const useDeleteAction = <
-  TError = ErrorType<unknown>,
+  TError = ErrorType<ErrorResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -539,7 +539,7 @@ export const useDeleteAction = <
 };
 
 /**
- * @summary Snooze an action for N days (default 7)
+ * @summary Snooze an action owned by the authenticated user for N days (default 7)
  */
 export const getSnoozeActionUrl = (id: number) => {
   return `/api/actions/${id}/snooze`;
@@ -559,7 +559,7 @@ export const snoozeAction = async (
 };
 
 export const getSnoozeActionMutationOptions = <
-  TError = ErrorType<unknown>,
+  TError = ErrorType<ErrorResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -600,13 +600,13 @@ export type SnoozeActionMutationResult = NonNullable<
   Awaited<ReturnType<typeof snoozeAction>>
 >;
 export type SnoozeActionMutationBody = BodyType<SnoozeActionBody>;
-export type SnoozeActionMutationError = ErrorType<unknown>;
+export type SnoozeActionMutationError = ErrorType<ErrorResponse>;
 
 /**
- * @summary Snooze an action for N days (default 7)
+ * @summary Snooze an action owned by the authenticated user for N days (default 7)
  */
 export const useSnoozeAction = <
-  TError = ErrorType<unknown>,
+  TError = ErrorType<ErrorResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<

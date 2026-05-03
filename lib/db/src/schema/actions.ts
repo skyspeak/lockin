@@ -14,6 +14,7 @@ export const priorityEnum = pgEnum("priority", ["low", "medium", "high"]);
 
 export const actionsTable = pgTable("actions", {
   id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().default(""),
   title: text("title").notNull(),
   description: text("description"),
   category: categoryEnum("category").notNull().default("other"),

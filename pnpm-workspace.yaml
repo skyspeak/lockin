@@ -80,6 +80,9 @@ onlyBuiltDependencies:
   - unrs-resolver
 
 overrides:
+  # Deduplicate drizzle-orm to prevent type-incompatibility errors caused by
+  # multiple instances resolved under different peer-dep suffixes.
+  drizzle-orm: "0.45.2"
   # replit uses linux-x64 only, we can exclude all other platforms
   "esbuild>@esbuild/darwin-arm64": "-"
   "esbuild>@esbuild/darwin-x64": "-"

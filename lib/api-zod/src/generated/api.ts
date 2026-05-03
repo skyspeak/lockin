@@ -15,7 +15,7 @@ export const HealthCheckResponse = zod.object({
 });
 
 /**
- * @summary List all actions
+ * @summary List all actions for the authenticated user
  */
 export const listActionsQueryIncludeSnoozedDefault = false;
 export const listActionsQueryLimitDefault = 50;
@@ -34,6 +34,7 @@ export const ListActionsResponse = zod.object({
   actions: zod.array(
     zod.object({
       id: zod.number(),
+      userId: zod.string(),
       title: zod.string(),
       description: zod.string().nullish(),
       status: zod.enum(["pending", "in-progress", "done", "dismissed"]),
@@ -48,7 +49,7 @@ export const ListActionsResponse = zod.object({
 });
 
 /**
- * @summary Create a new action item
+ * @summary Create a new action item for the authenticated user
  */
 export const CreateActionBody = zod.object({
   title: zod.string(),
@@ -57,12 +58,13 @@ export const CreateActionBody = zod.object({
 });
 
 /**
- * @summary Get the active action queue (excludes snoozed and completed)
+ * @summary Get the active action queue for the authenticated user
  */
 export const GetActionQueueResponse = zod.object({
   queue: zod.array(
     zod.object({
       id: zod.number(),
+      userId: zod.string(),
       title: zod.string(),
       description: zod.string().nullish(),
       status: zod.enum(["pending", "in-progress", "done", "dismissed"]),
@@ -78,7 +80,7 @@ export const GetActionQueueResponse = zod.object({
 });
 
 /**
- * @summary Update an action (status, snooze, etc.)
+ * @summary Update an action owned by the authenticated user
  */
 export const UpdateActionParams = zod.object({
   id: zod.coerce.number(),
@@ -93,6 +95,7 @@ export const UpdateActionBody = zod.object({
 
 export const UpdateActionResponse = zod.object({
   id: zod.number(),
+  userId: zod.string(),
   title: zod.string(),
   description: zod.string().nullish(),
   status: zod.enum(["pending", "in-progress", "done", "dismissed"]),
@@ -104,14 +107,14 @@ export const UpdateActionResponse = zod.object({
 });
 
 /**
- * @summary Delete an action
+ * @summary Delete an action owned by the authenticated user
  */
 export const DeleteActionParams = zod.object({
   id: zod.coerce.number(),
 });
 
 /**
- * @summary Snooze an action for N days (default 7)
+ * @summary Snooze an action owned by the authenticated user for N days (default 7)
  */
 export const SnoozeActionParams = zod.object({
   id: zod.coerce.number(),
@@ -125,6 +128,7 @@ export const SnoozeActionBody = zod.object({
 
 export const SnoozeActionResponse = zod.object({
   id: zod.number(),
+  userId: zod.string(),
   title: zod.string(),
   description: zod.string().nullish(),
   status: zod.enum(["pending", "in-progress", "done", "dismissed"]),

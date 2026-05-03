@@ -32,6 +32,7 @@ export const Priority = {
 
 export interface Action {
   id: number;
+  userId: string;
   title: string;
   description?: string | null;
   status: ActionStatus;

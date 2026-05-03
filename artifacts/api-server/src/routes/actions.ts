@@ -22,16 +22,17 @@ router.get("/", async (req, res) => {
     return res.status(400).json({ error: "Invalid query params" });
   }
   const { status, includeSnoozed, limit, offset } = parsed.data;
+  const userId = req.userId;
 
-  const conditions = [];
+  const conditions = [eq(actionsTable.userId, userId)];
   if (status) conditions.push(eq(actionsTable.status, status));
   if (!includeSnoozed) {
     conditions.push(
-      or(isNull(actionsTable.snoozedUntil), lte(actionsTable.snoozedUntil, new Date())),
+      or(isNull(actionsTable.snoozedUntil), lte(actionsTable.snoozedUntil, new Date()))!,
     );
   }
 
-  const where = conditions.length ? and(...conditions) : undefined;
+  const where = and(...conditions);
 
   const actions = await db
     .select()
@@ -54,21 +55,25 @@ router.post("/", async (req, res) => {
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid body" });
   }
+  const userId = req.userId;
 
   const [action] = await db
     .insert(actionsTable)
-    .values(parsed.data)
+    .values({ ...parsed.data, userId })
     .returning();
 
   return res.status(201).json(action);
 });
 
-router.get("/queue", async (_req, res) => {
+router.get("/queue", async (req, res) => {
+  const userId = req.userId;
+
   const queue = await db
     .select()
     .from(actionsTable)
     .where(
       and(
+        eq(actionsTable.userId, userId),
         sql`status IN ('pending', 'in-progress')`,
         or(isNull(actionsTable.snoozedUntil), lte(actionsTable.snoozedUntil, new Date())),
       ),
@@ -80,6 +85,7 @@ router.get("/queue", async (_req, res) => {
     .from(actionsTable)
     .where(
       and(
+        eq(actionsTable.userId, userId),
         sql`status IN ('pending', 'in-progress')`,
         sql`snoozed_until > NOW()`,
       ),
@@ -88,7 +94,12 @@ router.get("/queue", async (_req, res) => {
   const [{ doneCount }] = await db
     .select({ doneCount: sql<number>`count(*)::int` })
     .from(actionsTable)
-    .where(eq(actionsTable.status, "done"));
+    .where(
+      and(
+        eq(actionsTable.userId, userId),
+        eq(actionsTable.status, "done"),
+      ),
+    );
 
   return res.json({ queue, snoozedCount, doneCount });
 });
@@ -100,6 +111,7 @@ router.put("/:id", async (req, res) => {
   const bodyParsed = UpdateActionBody.safeParse(req.body);
   if (!bodyParsed.success) return res.status(400).json({ error: "Invalid body" });
 
+  const userId = req.userId;
   const updates: Record<string, unknown> = { ...bodyParsed.data, updatedAt: new Date() };
   if (bodyParsed.data.status === "done" || bodyParsed.data.status === "dismissed") {
     updates.completedAt = new Date();
@@ -108,7 +120,7 @@ router.put("/:id", async (req, res) => {
   const [action] = await db
     .update(actionsTable)
     .set(updates)
-    .where(eq(actionsTable.id, paramParsed.data.id))
+    .where(and(eq(actionsTable.id, paramParsed.data.id), eq(actionsTable.userId, userId)))
     .returning();
 
   if (!action) return res.status(404).json({ error: "Action not found" });
@@ -122,13 +134,14 @@ router.post("/:id/snooze", async (req, res) => {
   const bodyParsed = SnoozeActionBody.safeParse(req.body ?? {});
   if (!bodyParsed.success) return res.status(400).json({ error: "Invalid body" });
 
+  const userId = req.userId;
   const days = bodyParsed.data.days ?? 7;
   const snoozedUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 
   const [action] = await db
     .update(actionsTable)
     .set({ snoozedUntil, status: "pending", updatedAt: new Date() })
-    .where(eq(actionsTable.id, paramParsed.data.id))
+    .where(and(eq(actionsTable.id, paramParsed.data.id), eq(actionsTable.userId, userId)))
     .returning();
 
   if (!action) return res.status(404).json({ error: "Action not found" });
@@ -139,7 +152,14 @@ router.delete("/:id", async (req, res) => {
   const parsed = DeleteActionParams.safeParse({ id: Number(req.params.id) });
   if (!parsed.success) return res.status(400).json({ error: "Invalid id" });
 
-  await db.delete(actionsTable).where(eq(actionsTable.id, parsed.data.id));
+  const userId = req.userId;
+
+  const [deleted] = await db
+    .delete(actionsTable)
+    .where(and(eq(actionsTable.id, parsed.data.id), eq(actionsTable.userId, userId)))
+    .returning({ id: actionsTable.id });
+
+  if (!deleted) return res.status(404).json({ error: "Action not found" });
   return res.status(204).send();
 });
 
