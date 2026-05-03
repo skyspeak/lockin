@@ -22,6 +22,9 @@ router.get("/", async (req, res) => {
     return res.status(400).json({ error: "Invalid query params" });
   }
   const { status, includeSnoozed, limit, offset } = parsed.data;
+  if (!Number.isInteger(limit) || !Number.isInteger(offset)) {
+    return res.status(400).json({ error: "Invalid query params" });
+  }
   const userId = req.userId;
 
   const conditions = [eq(actionsTable.userId, userId)];
@@ -105,7 +108,9 @@ router.get("/queue", async (req, res) => {
 });
 
 router.put("/:id", async (req, res) => {
-  const paramParsed = UpdateActionParams.safeParse({ id: Number(req.params.id) });
+  const rawId = Number(req.params.id);
+  if (!Number.isInteger(rawId)) return res.status(400).json({ error: "Invalid id" });
+  const paramParsed = UpdateActionParams.safeParse({ id: rawId });
   if (!paramParsed.success) return res.status(400).json({ error: "Invalid id" });
 
   const bodyParsed = UpdateActionBody.safeParse(req.body);
@@ -128,7 +133,9 @@ router.put("/:id", async (req, res) => {
 });
 
 router.post("/:id/snooze", async (req, res) => {
-  const paramParsed = SnoozeActionParams.safeParse({ id: Number(req.params.id) });
+  const rawId = Number(req.params.id);
+  if (!Number.isInteger(rawId)) return res.status(400).json({ error: "Invalid id" });
+  const paramParsed = SnoozeActionParams.safeParse({ id: rawId });
   if (!paramParsed.success) return res.status(400).json({ error: "Invalid id" });
 
   const bodyParsed = SnoozeActionBody.safeParse(req.body ?? {});
@@ -136,6 +143,7 @@ router.post("/:id/snooze", async (req, res) => {
 
   const userId = req.userId;
   const days = bodyParsed.data.days ?? 7;
+  if (!Number.isInteger(days)) return res.status(400).json({ error: "Invalid body" });
   const snoozedUntil = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 
   const [action] = await db
@@ -149,7 +157,9 @@ router.post("/:id/snooze", async (req, res) => {
 });
 
 router.delete("/:id", async (req, res) => {
-  const parsed = DeleteActionParams.safeParse({ id: Number(req.params.id) });
+  const rawId = Number(req.params.id);
+  if (!Number.isInteger(rawId)) return res.status(400).json({ error: "Invalid id" });
+  const parsed = DeleteActionParams.safeParse({ id: rawId });
   if (!parsed.success) return res.status(400).json({ error: "Invalid id" });
 
   const userId = req.userId;

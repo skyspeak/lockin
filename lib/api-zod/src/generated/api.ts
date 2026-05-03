@@ -19,15 +19,27 @@ export const HealthCheckResponse = zod.object({
  */
 export const listActionsQueryIncludeSnoozedDefault = false;
 export const listActionsQueryLimitDefault = 50;
+export const listActionsQueryLimitMax = 200;
+
 export const listActionsQueryOffsetDefault = 0;
+export const listActionsQueryOffsetMin = 0;
+export const listActionsQueryOffsetMax = 100000;
 
 export const ListActionsQueryParams = zod.object({
   status: zod.enum(["pending", "in-progress", "done", "dismissed"]).optional(),
   includeSnoozed: zod.coerce
     .boolean()
     .default(listActionsQueryIncludeSnoozedDefault),
-  limit: zod.coerce.number().default(listActionsQueryLimitDefault),
-  offset: zod.coerce.number().default(listActionsQueryOffsetDefault),
+  limit: zod.coerce
+    .number()
+    .min(1)
+    .max(listActionsQueryLimitMax)
+    .default(listActionsQueryLimitDefault),
+  offset: zod.coerce
+    .number()
+    .min(listActionsQueryOffsetMin)
+    .max(listActionsQueryOffsetMax)
+    .default(listActionsQueryOffsetDefault),
 });
 
 export const ListActionsResponse = zod.object({
@@ -51,9 +63,13 @@ export const ListActionsResponse = zod.object({
 /**
  * @summary Create a new action item for the authenticated user
  */
+export const createActionBodyTitleMax = 500;
+
+export const createActionBodyDescriptionMax = 2000;
+
 export const CreateActionBody = zod.object({
-  title: zod.string(),
-  description: zod.string().optional(),
+  title: zod.string().min(1).max(createActionBodyTitleMax),
+  description: zod.string().max(createActionBodyDescriptionMax).optional(),
   priority: zod.enum(["low", "medium", "high"]).optional(),
 });
 
@@ -82,13 +98,18 @@ export const GetActionQueueResponse = zod.object({
 /**
  * @summary Update an action owned by the authenticated user
  */
+
 export const UpdateActionParams = zod.object({
-  id: zod.coerce.number(),
+  id: zod.coerce.number().min(1),
 });
 
+export const updateActionBodyTitleMax = 500;
+
+export const updateActionBodyDescriptionMax = 2000;
+
 export const UpdateActionBody = zod.object({
-  title: zod.string().optional(),
-  description: zod.string().optional(),
+  title: zod.string().min(1).max(updateActionBodyTitleMax).optional(),
+  description: zod.string().max(updateActionBodyDescriptionMax).optional(),
   status: zod.enum(["pending", "in-progress", "done", "dismissed"]).optional(),
   priority: zod.enum(["low", "medium", "high"]).optional(),
 });
@@ -109,21 +130,28 @@ export const UpdateActionResponse = zod.object({
 /**
  * @summary Delete an action owned by the authenticated user
  */
+
 export const DeleteActionParams = zod.object({
-  id: zod.coerce.number(),
+  id: zod.coerce.number().min(1),
 });
 
 /**
  * @summary Snooze an action owned by the authenticated user for N days (default 7)
  */
+
 export const SnoozeActionParams = zod.object({
-  id: zod.coerce.number(),
+  id: zod.coerce.number().min(1),
 });
 
 export const snoozeActionBodyDaysDefault = 7;
+export const snoozeActionBodyDaysMax = 365;
 
 export const SnoozeActionBody = zod.object({
-  days: zod.number().default(snoozeActionBodyDaysDefault),
+  days: zod
+    .number()
+    .min(1)
+    .max(snoozeActionBodyDaysMax)
+    .default(snoozeActionBodyDaysDefault),
 });
 
 export const SnoozeActionResponse = zod.object({

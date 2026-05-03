@@ -44,26 +44,48 @@ export interface Action {
 }
 
 export interface CreateActionBody {
+  /**
+   * @minLength 1
+   * @maxLength 500
+   */
   title: string;
+  /** @maxLength 2000 */
   description?: string;
   priority?: Priority;
 }
 
 export interface UpdateActionBody {
+  /**
+   * @minLength 1
+   * @maxLength 500
+   */
   title?: string;
+  /** @maxLength 2000 */
   description?: string;
   status?: ActionStatus;
   priority?: Priority;
 }
 
 export interface SnoozeActionBody {
+  /**
+   * @minimum 1
+   * @maximum 365
+   */
   days?: number;
 }
 
 export type ListActionsParams = {
   status?: ActionStatus;
   includeSnoozed?: boolean;
+  /**
+   * @minimum 1
+   * @maximum 200
+   */
   limit?: number;
+  /**
+   * @minimum 0
+   * @maximum 100000
+   */
   offset?: number;
 };
 
