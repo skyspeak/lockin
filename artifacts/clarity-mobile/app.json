@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Clarity",
-    "slug": "clarity-mobile",
+    "name": "add",
+    "slug": "add",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "clarity",
+    "scheme": "add",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.clarity.app",
+      "bundleIdentifier": "com.add.app",
       "buildNumber": "1",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Clarity uses the microphone so you can dictate thoughts hands-free.",
@@ -27,7 +27,7 @@
       }
     },
     "android": {
-      "package": "com.clarity.app",
+      "package": "com.add.app",
       "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
