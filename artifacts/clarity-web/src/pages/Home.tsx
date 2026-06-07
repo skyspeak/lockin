@@ -11,6 +11,7 @@ import {
 import { Mic, Square, Loader2, Check, Mail, MessageSquare, Moon, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useApiKey } from "@/lib/auth-context";
 
 type Action = {
   id: number;
@@ -22,6 +23,7 @@ type Action = {
 };
 
 export default function Home() {
+  const apiKey = useApiKey();
   const qc = useQueryClient();
   const queueKey = getGetActionQueueUrl();
   const { data, isLoading } = useGetActionQueue();
@@ -58,6 +60,9 @@ export default function Home() {
           const res = await fetch(`${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/transcribe`, {
             method: "POST",
             body: form,
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+            },
           });
           if (!res.ok) throw new Error("transcribe failed");
           const { text } = (await res.json()) as { text: string };

@@ -30,6 +30,7 @@ import {
   getGetActionQueueUrl,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useApiKey } from "@/components/AuthContext";
 
 const COLORS = {
   bg: "#fdfbf7",
@@ -63,6 +64,7 @@ type Action = {
 };
 
 export default function HomeScreen() {
+  const apiKey = useApiKey();
   const queryClient = useQueryClient();
   const queueUrl = getGetActionQueueUrl();
   const { data, refetch, isLoading } = useGetActionQueue();
@@ -138,7 +140,13 @@ export default function HomeScreen() {
       // @ts-ignore — RN FormData accepts {uri,name,type}
       form.append("audio", { uri, name: `audio.${ext}`, type: mime });
 
-      const res = await fetch(`${API_BASE}/transcribe`, { method: "POST", body: form });
+      const res = await fetch(`${API_BASE}/transcribe`, {
+        method: "POST",
+        body: form,
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      });
       if (!res.ok) throw new Error("transcription failed");
       const json = (await res.json()) as { text: string };
       const text = json.text?.trim();
