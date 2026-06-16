@@ -17,15 +17,17 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { SetupScreen } from "@/components/SetupScreen";
 import { ApiKeyContext } from "@/components/AuthContext";
-
-if (process.env.EXPO_PUBLIC_DOMAIN) {
-  setBaseUrl(`https://${process.env.EXPO_PUBLIC_DOMAIN}`);
-}
+import { normalizeApiOrigin, resolveDefaultApiOrigin } from "@/constants/api";
 
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
 const STORAGE_KEY = "clarity_api_key";
+const SERVER_STORAGE_KEY = "clarity_api_server_url";
+
+function applyApiOrigin(origin: string) {
+  setBaseUrl(normalizeApiOrigin(origin));
+}
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
@@ -39,11 +41,16 @@ export default function RootLayout() {
   const [keyChecked, setKeyChecked] = useState(false);
 
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY)
-      .then((stored) => {
-        if (stored) {
-          setAuthTokenGetter(() => stored);
-          setApiKey(stored);
+    Promise.all([
+      AsyncStorage.getItem(STORAGE_KEY),
+      AsyncStorage.getItem(SERVER_STORAGE_KEY),
+    ])
+      .then(([storedKey, storedServer]) => {
+        const server = storedServer || resolveDefaultApiOrigin();
+        if (storedKey && server) {
+          applyApiOrigin(server);
+          setAuthTokenGetter(() => storedKey);
+          setApiKey(storedKey);
         } else {
           setApiKey("");
         }
@@ -68,8 +75,12 @@ export default function RootLayout() {
     return (
       <SafeAreaProvider>
         <SetupScreen
-          onSetup={(key) => {
-            AsyncStorage.setItem(STORAGE_KEY, key).catch(() => {});
+          onSetup={(serverUrl, key) => {
+            AsyncStorage.multiSet([
+              [STORAGE_KEY, key],
+              [SERVER_STORAGE_KEY, serverUrl],
+            ]).catch(() => {});
+            applyApiOrigin(serverUrl);
             setAuthTokenGetter(() => key);
             setApiKey(key);
           }}

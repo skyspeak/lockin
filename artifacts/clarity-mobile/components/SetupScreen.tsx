@@ -1,31 +1,56 @@
 import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { normalizeApiOrigin, resolveDefaultApiOrigin } from "@/constants/api";
 
 interface SetupScreenProps {
-  onSetup: (key: string) => void;
+  onSetup: (serverUrl: string, key: string) => void;
 }
 
 export function SetupScreen({ onSetup }: SetupScreenProps) {
+  const [serverUrl, setServerUrl] = useState(resolveDefaultApiOrigin());
   const [value, setValue] = useState("");
   const [error, setError] = useState("");
 
   const handleSubmit = () => {
-    const trimmed = value.trim();
-    if (!trimmed) {
+    const trimmedKey = value.trim();
+    const trimmedServer = normalizeApiOrigin(serverUrl);
+    if (!trimmedServer) {
+      setError("API server URL is required");
+      return;
+    }
+    if (!trimmedKey) {
       setError("API key is required");
       return;
     }
-    onSetup(trimmed);
+    onSetup(trimmedServer, trimmedKey);
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.inner}>
         <Text style={styles.title}>Clarity</Text>
-        <Text style={styles.subtitle}>Enter your API key to get started</Text>
+        <Text style={styles.subtitle}>Connect to your Clarity server</Text>
+
+        <Text style={styles.label}>API server</Text>
         <TextInput
-          style={[styles.input, error ? styles.inputError : null]}
+          style={[styles.input, error && !serverUrl.trim() ? styles.inputError : null]}
+          value={serverUrl}
+          onChangeText={(t) => {
+            setServerUrl(t);
+            setError("");
+          }}
+          placeholder="https://your-server.example.com"
+          placeholderTextColor="#b0a79f"
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+          textContentType="URL"
+        />
+
+        <Text style={styles.label}>API key</Text>
+        <TextInput
+          style={[styles.input, error && !value.trim() ? styles.inputError : null]}
           value={value}
           onChangeText={(t) => {
             setValue(t);
@@ -39,6 +64,7 @@ export function SetupScreen({ onSetup }: SetupScreenProps) {
           onSubmitEditing={handleSubmit}
           returnKeyType="done"
         />
+
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <Pressable style={styles.button} onPress={handleSubmit}>
           <Text style={styles.buttonText}>Unlock</Text>
@@ -70,6 +96,14 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 32,
   },
+  label: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#7a716b",
+    marginBottom: 6,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
   input: {
     borderWidth: 1,
     borderColor: "#ebe5dd",
@@ -79,7 +113,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     fontSize: 14,
     color: "#1a1715",
-    marginBottom: 8,
+    marginBottom: 16,
   },
   inputError: {
     borderColor: "#c0392b",
@@ -94,6 +128,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: "center",
+    marginTop: 8,
   },
   buttonText: {
     color: "#ffffff",

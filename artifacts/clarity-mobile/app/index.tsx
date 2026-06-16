@@ -31,6 +31,8 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useApiKey } from "@/components/AuthContext";
+import { getApiBasePath, resolveDefaultApiOrigin } from "@/constants/api";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const COLORS = {
   bg: "#fdfbf7",
@@ -47,9 +49,13 @@ const COLORS = {
   red: "#c0392b",
 };
 
-const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
-  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`
-  : "/api";
+const SERVER_STORAGE_KEY = "clarity_api_server_url";
+
+async function resolveApiBase(): Promise<string> {
+  const stored = await AsyncStorage.getItem(SERVER_STORAGE_KEY);
+  const origin = stored || resolveDefaultApiOrigin();
+  return getApiBasePath(origin);
+}
 
 type Action = {
   id: number;
@@ -140,7 +146,8 @@ export default function HomeScreen() {
       // @ts-ignore — RN FormData accepts {uri,name,type}
       form.append("audio", { uri, name: `audio.${ext}`, type: mime });
 
-      const res = await fetch(`${API_BASE}/transcribe`, {
+      const apiBase = await resolveApiBase();
+      const res = await fetch(`${apiBase}/transcribe`, {
         method: "POST",
         body: form,
         headers: {

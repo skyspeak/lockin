@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "add",
-    "slug": "add",
+    "name": "Clarity",
+    "slug": "lockin",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "add",
+    "scheme": "clarity",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.add.app",
+      "bundleIdentifier": "com.skyspeak.lockin",
       "buildNumber": "1",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Clarity uses the microphone so you can dictate thoughts hands-free.",
@@ -27,8 +27,12 @@
       }
     },
     "android": {
-      "package": "com.add.app",
+      "package": "com.skyspeak.lockin",
       "versionCode": 1,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#fdfbf7"
@@ -41,7 +45,7 @@
       [
         "expo-router",
         {
-          "origin": "https://replit.com/"
+          "origin": "https://lockin.app"
         }
       ],
       "expo-font",
