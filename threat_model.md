@@ -11,7 +11,7 @@ The mockup sandbox is development-only and is out of scope for production securi
 - **Thought and action data** -- action titles, descriptions, categories, statuses, snooze dates, and timestamps can contain personal, work, family, finance, health, or other sensitive user information.
 - **Audio submissions and transcription output** -- uploaded audio and generated text may contain sensitive spoken content and can incur third-party API cost.
 - **Database contents and connection string** -- PostgreSQL stores all durable user data; compromise enables bulk disclosure, modification, or deletion.
-- **Application secrets** -- `DATABASE_URL`, `AI_INTEGRATIONS_OPENAI_BASE_URL`, and `AI_INTEGRATIONS_OPENAI_API_KEY` must remain server-side and out of logs/client bundles.
+- **Application secrets** -- `DATABASE_URL`, `AI_CHAT_API_KEY`, `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, and legacy `AI_INTEGRATIONS_OPENAI_*` transcription vars must remain server-side and out of logs/client bundles.
 - **Service availability and third-party quota** -- public endpoints can consume server CPU/memory, database capacity, and OpenAI transcription budget.
 
 ## Trust Boundaries

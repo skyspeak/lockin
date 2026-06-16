@@ -1,8 +1,11 @@
 import { useState, useCallback, useEffect } from "react";
+import { Route, Switch } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { setAuthTokenGetter } from "@workspace/api-client-react";
 import { Toaster } from "@/components/ui/toaster";
 import Home from "@/pages/Home";
+import FollowUps from "@/pages/FollowUps";
+import FollowUpDetail from "@/pages/FollowUpDetail";
 import Login from "@/pages/Login";
 import { ApiKeyContext } from "@/lib/auth-context";
 
@@ -34,7 +37,11 @@ export default function App() {
   return (
     <ApiKeyContext.Provider value={apiKey}>
       <QueryClientProvider client={queryClient}>
-        <Home />
+        <Switch>
+          <Route path="/follow-ups/:id" component={FollowUpDetail} />
+          <Route path="/follow-ups" component={FollowUps} />
+          <Route path="/" component={Home} />
+        </Switch>
         <Toaster />
       </QueryClientProvider>
     </ApiKeyContext.Provider>

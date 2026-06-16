@@ -166,3 +166,115 @@ export const SnoozeActionResponse = zod.object({
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
+
+/**
+ * @summary List follow-up plans for the authenticated user
+ */
+export const listFollowUpPlansQueryLimitDefault = 50;
+export const listFollowUpPlansQueryLimitMax = 200;
+
+export const listFollowUpPlansQueryOffsetDefault = 0;
+export const listFollowUpPlansQueryOffsetMin = 0;
+export const listFollowUpPlansQueryOffsetMax = 100000;
+
+export const ListFollowUpPlansQueryParams = zod.object({
+  limit: zod.coerce
+    .number()
+    .min(1)
+    .max(listFollowUpPlansQueryLimitMax)
+    .default(listFollowUpPlansQueryLimitDefault),
+  offset: zod.coerce
+    .number()
+    .min(listFollowUpPlansQueryOffsetMin)
+    .max(listFollowUpPlansQueryOffsetMax)
+    .default(listFollowUpPlansQueryOffsetDefault),
+});
+
+export const ListFollowUpPlansResponse = zod.object({
+  plans: zod.array(
+    zod.object({
+      id: zod.number(),
+      actionId: zod.number(),
+      actionTitle: zod.string(),
+      userId: zod.string(),
+      status: zod.enum(["generating", "ready", "failed"]),
+      summary: zod.string().nullish(),
+      steps: zod.array(zod.string()),
+      userTodos: zod.array(
+        zod.object({
+          id: zod.string(),
+          text: zod.string(),
+          done: zod.boolean(),
+        }),
+      ),
+      checkInHint: zod.string().nullish(),
+      errorMessage: zod.string().nullish(),
+      createdAt: zod.coerce.date(),
+      updatedAt: zod.coerce.date(),
+    }),
+  ),
+  total: zod.number(),
+});
+
+/**
+ * @summary Get a follow-up plan by id
+ */
+
+export const GetFollowUpPlanParams = zod.object({
+  id: zod.coerce.number().min(1),
+});
+
+export const GetFollowUpPlanResponse = zod.object({
+  id: zod.number(),
+  actionId: zod.number(),
+  actionTitle: zod.string(),
+  userId: zod.string(),
+  status: zod.enum(["generating", "ready", "failed"]),
+  summary: zod.string().nullish(),
+  steps: zod.array(zod.string()),
+  userTodos: zod.array(
+    zod.object({
+      id: zod.string(),
+      text: zod.string(),
+      done: zod.boolean(),
+    }),
+  ),
+  checkInHint: zod.string().nullish(),
+  errorMessage: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+
+/**
+ * @summary Toggle done state on a user todo in a follow-up plan
+ */
+
+export const ToggleFollowUpTodoParams = zod.object({
+  id: zod.coerce.number().min(1),
+  todoId: zod.coerce.string().min(1),
+});
+
+export const ToggleFollowUpTodoBody = zod.object({
+  done: zod.boolean(),
+});
+
+export const ToggleFollowUpTodoResponse = zod.object({
+  id: zod.number(),
+  actionId: zod.number(),
+  actionTitle: zod.string(),
+  userId: zod.string(),
+  status: zod.enum(["generating", "ready", "failed"]),
+  summary: zod.string().nullish(),
+  steps: zod.array(zod.string()),
+  userTodos: zod.array(
+    zod.object({
+      id: zod.string(),
+      text: zod.string(),
+      done: zod.boolean(),
+    }),
+  ),
+  checkInHint: zod.string().nullish(),
+  errorMessage: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});

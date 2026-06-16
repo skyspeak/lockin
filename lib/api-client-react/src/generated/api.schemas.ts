@@ -99,3 +99,54 @@ export type GetActionQueue200 = {
   snoozedCount: number;
   doneCount: number;
 };
+
+export type FollowUpPlanStatus = (typeof FollowUpPlanStatus)[keyof typeof FollowUpPlanStatus];
+
+export const FollowUpPlanStatus = {
+  generating: "generating",
+  ready: "ready",
+  failed: "failed",
+} as const;
+
+export interface FollowUpTodo {
+  id: string;
+  text: string;
+  done: boolean;
+}
+
+export interface FollowUpPlan {
+  id: number;
+  actionId: number;
+  actionTitle: string;
+  userId: string;
+  status: FollowUpPlanStatus;
+  summary?: string | null;
+  steps: string[];
+  userTodos: FollowUpTodo[];
+  checkInHint?: string | null;
+  errorMessage?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ToggleFollowUpTodoBody {
+  done: boolean;
+}
+
+export type ListFollowUpPlansParams = {
+  /**
+   * @minimum 1
+   * @maximum 200
+   */
+  limit?: number;
+  /**
+   * @minimum 0
+   * @maximum 100000
+   */
+  offset?: number;
+};
+
+export type ListFollowUpPlans200 = {
+  plans: FollowUpPlan[];
+  total: number;
+};

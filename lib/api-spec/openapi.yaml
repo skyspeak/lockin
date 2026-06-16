@@ -12,6 +12,8 @@ tags:
     description: Health operations
   - name: actions
     description: Action queue management
+  - name: followUpPlans
+    description: Follow-up plans generated from actions
 paths:
   /healthz:
     get:
@@ -238,6 +240,130 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /follow-up-plans:
+    get:
+      operationId: listFollowUpPlans
+      tags: [followUpPlans]
+      summary: List follow-up plans for the authenticated user
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 200
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+            maximum: 100000
+      responses:
+        "200":
+          description: List of follow-up plans
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plans:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/FollowUpPlan"
+                  total:
+                    type: integer
+                required: [plans, total]
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /follow-up-plans/{id}:
+    get:
+      operationId: getFollowUpPlan
+      tags: [followUpPlans]
+      summary: Get a follow-up plan by id
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Follow-up plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FollowUpPlan"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /follow-up-plans/{id}/todos/{todoId}:
+    patch:
+      operationId: toggleFollowUpTodo
+      tags: [followUpPlans]
+      summary: Toggle done state on a user todo in a follow-up plan
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+        - name: todoId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ToggleFollowUpTodoBody"
+      responses:
+        "200":
+          description: Updated follow-up plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FollowUpPlan"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -342,3 +468,66 @@ components:
           default: 7
           minimum: 1
           maximum: 365
+
+    FollowUpPlanStatus:
+      type: string
+      enum:
+        - generating
+        - ready
+        - failed
+
+    FollowUpTodo:
+      type: object
+      properties:
+        id:
+          type: string
+        text:
+          type: string
+        done:
+          type: boolean
+      required: [id, text, done]
+
+    FollowUpPlan:
+      type: object
+      properties:
+        id:
+          type: integer
+        actionId:
+          type: integer
+        actionTitle:
+          type: string
+        userId:
+          type: string
+        status:
+          $ref: "#/components/schemas/FollowUpPlanStatus"
+        summary:
+          type: string
+          nullable: true
+        steps:
+          type: array
+          items:
+            type: string
+        userTodos:
+          type: array
+          items:
+            $ref: "#/components/schemas/FollowUpTodo"
+        checkInHint:
+          type: string
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, actionId, actionTitle, userId, status, steps, userTodos, createdAt, updatedAt]
+
+    ToggleFollowUpTodoBody:
+      type: object
+      properties:
+        done:
+          type: boolean
+      required: [done]

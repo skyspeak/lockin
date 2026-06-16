@@ -11,6 +11,7 @@ import {
   SnoozeActionParams,
   SnoozeActionBody,
 } from "@workspace/api-zod";
+import { enqueueFollowUpPlan } from "../services/followUpPlan";
 
 const router = Router();
 
@@ -64,6 +65,8 @@ router.post("/", async (req, res) => {
     .insert(actionsTable)
     .values({ ...parsed.data, userId })
     .returning();
+
+  enqueueFollowUpPlan(action);
 
   return res.status(201).json(action);
 });

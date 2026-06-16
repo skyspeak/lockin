@@ -182,3 +182,6 @@ overrides:
   "postcss": "8.5.13"
   # GHSA-w5hq-g745-h8pq: uuid missing buffer bounds check
   "uuid": "14.0.0"
+
+allowBuilds:
+  esbuild: set this to true or false

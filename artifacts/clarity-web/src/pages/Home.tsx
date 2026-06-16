@@ -8,7 +8,8 @@ import {
   useCreateAction,
   getGetActionQueueUrl,
 } from "@workspace/api-client-react";
-import { Mic, Square, Loader2, Check, Mail, MessageSquare, Moon, Trash2 } from "lucide-react";
+import { Mic, Square, Loader2, Check, Mail, MessageSquare, Moon, Trash2, ListChecks } from "lucide-react";
+import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useApiKey } from "@/lib/auth-context";
@@ -136,7 +137,14 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[#fdfbf7] text-[#1a1715]">
       <div className="mx-auto max-w-xl px-6 pt-12 pb-24">
-        <header className="mb-12 text-center">
+        <header className="mb-12 text-center relative">
+          <Link
+            href="/follow-ups"
+            className="absolute right-0 top-0 inline-flex items-center gap-1.5 text-sm font-semibold text-[#c8553d] hover:text-[#a8412e]"
+          >
+            <ListChecks className="h-4 w-4" />
+            Follow-ups
+          </Link>
           <h1 className="text-3xl font-bold tracking-tight">Clarity</h1>
           <p className="mt-1 text-sm text-[#7a716b]">
             {queue.length === 0

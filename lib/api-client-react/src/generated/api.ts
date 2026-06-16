@@ -20,11 +20,15 @@ import type {
   Action,
   CreateActionBody,
   ErrorResponse,
+  FollowUpPlan,
   GetActionQueue200,
   HealthStatus,
   ListActions200,
   ListActionsParams,
+  ListFollowUpPlans200,
+  ListFollowUpPlansParams,
   SnoozeActionBody,
+  ToggleFollowUpTodoBody,
   UpdateActionBody,
 } from "./api.schemas";
 
@@ -623,4 +627,257 @@ export const useSnoozeAction = <
   TContext
 > => {
   return useMutation(getSnoozeActionMutationOptions(options));
+};
+
+/**
+ * @summary List follow-up plans for the authenticated user
+ */
+export const getListFollowUpPlansUrl = (params?: ListFollowUpPlansParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/follow-up-plans?${stringifiedParams}`
+    : `/api/follow-up-plans`;
+};
+
+export const listFollowUpPlans = async (
+  params?: ListFollowUpPlansParams,
+  options?: RequestInit,
+): Promise<ListFollowUpPlans200> => {
+  return customFetch<ListFollowUpPlans200>(getListFollowUpPlansUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListFollowUpPlansQueryKey = (params?: ListFollowUpPlansParams) => {
+  return [`/api/follow-up-plans`, ...(params ? [params] : [])] as const;
+};
+
+export const getListFollowUpPlansQueryOptions = <
+  TData = Awaited<ReturnType<typeof listFollowUpPlans>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListFollowUpPlansParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listFollowUpPlans>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListFollowUpPlansQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listFollowUpPlans>>> = ({
+    signal,
+  }) => listFollowUpPlans(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listFollowUpPlans>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListFollowUpPlansQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listFollowUpPlans>>
+>;
+export type ListFollowUpPlansQueryError = ErrorType<ErrorResponse>;
+
+export function useListFollowUpPlans<
+  TData = Awaited<ReturnType<typeof listFollowUpPlans>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params?: ListFollowUpPlansParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listFollowUpPlans>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListFollowUpPlansQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get a follow-up plan by id
+ */
+export const getGetFollowUpPlanUrl = (id: number) => {
+  return `/api/follow-up-plans/${id}`;
+};
+
+export const getFollowUpPlan = async (
+  id: number,
+  options?: RequestInit,
+): Promise<FollowUpPlan> => {
+  return customFetch<FollowUpPlan>(getGetFollowUpPlanUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetFollowUpPlanQueryKey = (id: number) => {
+  return [`/api/follow-up-plans/${id}`] as const;
+};
+
+export const getGetFollowUpPlanQueryOptions = <
+  TData = Awaited<ReturnType<typeof getFollowUpPlan>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFollowUpPlan>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetFollowUpPlanQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getFollowUpPlan>>> = ({
+    signal,
+  }) => getFollowUpPlan(id, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, enabled: !!id, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getFollowUpPlan>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetFollowUpPlanQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getFollowUpPlan>>
+>;
+export type GetFollowUpPlanQueryError = ErrorType<ErrorResponse>;
+
+export function useGetFollowUpPlan<
+  TData = Awaited<ReturnType<typeof getFollowUpPlan>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getFollowUpPlan>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetFollowUpPlanQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Toggle done state on a user todo in a follow-up plan
+ */
+export const getToggleFollowUpTodoUrl = (id: number, todoId: string) => {
+  return `/api/follow-up-plans/${id}/todos/${encodeURIComponent(todoId)}`;
+};
+
+export const toggleFollowUpTodo = async (
+  id: number,
+  todoId: string,
+  toggleFollowUpTodoBody: ToggleFollowUpTodoBody,
+  options?: RequestInit,
+): Promise<FollowUpPlan> => {
+  return customFetch<FollowUpPlan>(getToggleFollowUpTodoUrl(id, todoId), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(toggleFollowUpTodoBody),
+  });
+};
+
+export const getToggleFollowUpTodoMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof toggleFollowUpTodo>>,
+    TError,
+    { id: number; todoId: string; data: BodyType<ToggleFollowUpTodoBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof toggleFollowUpTodo>>,
+  TError,
+  { id: number; todoId: string; data: BodyType<ToggleFollowUpTodoBody> },
+  TContext
+> => {
+  const mutationKey = ["toggleFollowUpTodo"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof toggleFollowUpTodo>>,
+    { id: number; todoId: string; data: BodyType<ToggleFollowUpTodoBody> }
+  > = (props) => {
+    const { id, todoId, data } = props ?? {};
+
+    return toggleFollowUpTodo(id, todoId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ToggleFollowUpTodoMutationResult = NonNullable<
+  Awaited<ReturnType<typeof toggleFollowUpTodo>>
+>;
+export type ToggleFollowUpTodoMutationBody = BodyType<ToggleFollowUpTodoBody>;
+export type ToggleFollowUpTodoMutationError = ErrorType<ErrorResponse>;
+
+export const useToggleFollowUpTodo = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof toggleFollowUpTodo>>,
+    TError,
+    { id: number; todoId: string; data: BodyType<ToggleFollowUpTodoBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof toggleFollowUpTodo>>,
+  TError,
+  { id: number; todoId: string; data: BodyType<ToggleFollowUpTodoBody> },
+  TContext
+> => {
+  return useMutation(getToggleFollowUpTodoMutationOptions(options));
 };
