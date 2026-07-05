@@ -21,11 +21,14 @@ export default function Login({ onLogin }: LoginProps) {
   return (
     <div className="min-h-screen bg-[#fdfbf7] flex items-center justify-center">
       <div className="w-full max-w-sm px-6">
-        <h1 className="text-3xl font-bold tracking-tight text-center mb-2 text-[#1a1715]">
+        <p className="text-xs font-semibold uppercase tracking-widest text-[#c8553d] mb-2 text-center">
+          Voice first
+        </p>
+        <h1 className="text-3xl font-bold tracking-tight text-center mb-2 text-[#1a1715] font-serif">
           Clarity
         </h1>
         <p className="text-sm text-[#7a716b] text-center mb-8">
-          Enter your API key to access your workspace
+          Speak tasks. Stay organized. Enter your API key to start.
         </p>
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           <input

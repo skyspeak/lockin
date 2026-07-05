@@ -8,20 +8,12 @@ import {
   useCreateAction,
   getGetActionQueueUrl,
 } from "@workspace/api-client-react";
-import { Mic, Square, Loader2, Check, Mail, MessageSquare, Moon, Trash2, ListChecks } from "lucide-react";
+import { ChevronUp, ListChecks } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useApiKey } from "@/lib/auth-context";
-
-type Action = {
-  id: number;
-  title: string;
-  status: string;
-  priority: string;
-  snoozedUntil?: string | null;
-  createdAt: string;
-};
+import { VoiceCaptureButton } from "@/components/VoiceCaptureButton";
+import { TaskPanel, type TaskItem } from "@/components/TaskPanel";
 
 export default function Home() {
   const apiKey = useApiKey();
@@ -36,6 +28,8 @@ export default function Home() {
 
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [tasksOpen, setTasksOpen] = useState(false);
+  const [lastCaptured, setLastCaptured] = useState<string | null>(null);
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
 
@@ -61,9 +55,7 @@ export default function Home() {
           const res = await fetch(`${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/transcribe`, {
             method: "POST",
             body: form,
-            headers: {
-              Authorization: `Bearer ${apiKey}`,
-            },
+            headers: { Authorization: `Bearer ${apiKey}` },
           });
           if (!res.ok) throw new Error("transcribe failed");
           const { text } = (await res.json()) as { text: string };
@@ -73,7 +65,9 @@ export default function Home() {
             return;
           }
           await createAction.mutateAsync({ data: { title: trimmed, priority: "medium" } });
+          setLastCaptured(trimmed);
           invalidate();
+          toast({ title: "Task added", description: trimmed });
         } catch {
           toast({ title: "Transcription failed", variant: "destructive" });
         } finally {
@@ -84,9 +78,13 @@ export default function Home() {
       mediaRecorder.current = mr;
       setIsRecording(true);
     } catch {
-      toast({ title: "Microphone blocked", description: "Allow microphone access to capture voice notes.", variant: "destructive" });
+      toast({
+        title: "Microphone blocked",
+        description: "Allow microphone access to capture tasks by voice.",
+        variant: "destructive",
+      });
     }
-  }, [createAction, invalidate, toast]);
+  }, [apiKey, createAction, invalidate, toast]);
 
   const stopRecording = useCallback(() => {
     mediaRecorder.current?.stop();
@@ -95,7 +93,6 @@ export default function Home() {
 
   const onMic = isRecording ? stopRecording : startRecording;
 
-  // Spacebar to record (push-to-talk-ish: tap to start, tap to stop)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.code !== "Space" || e.repeat) return;
@@ -109,6 +106,8 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handler);
   }, [onMic, isTranscribing]);
 
+  const queue = (data?.queue ?? []) as TaskItem[];
+
   const complete = async (id: number) => {
     await updateAction.mutateAsync({ id, data: { status: "done" } });
     invalidate();
@@ -119,25 +118,22 @@ export default function Home() {
     toast({ title: days === 1 ? "Snoozed until tomorrow" : `Snoozed for ${days} days` });
   };
   const remove = async (id: number) => {
-    if (!window.confirm("Delete this action?")) return;
+    if (!window.confirm("Delete this task?")) return;
     await deleteAction.mutateAsync({ id });
     invalidate();
   };
   const email = (title: string) => {
-    const body = encodeURIComponent(title);
-    window.open(`https://mail.google.com/mail/?view=cm&body=${body}`, "_blank");
+    window.open(`https://mail.google.com/mail/?view=cm&body=${encodeURIComponent(title)}`, "_blank");
   };
   const text = (title: string) => {
-    const body = encodeURIComponent(title);
-    window.open(`sms:?body=${body}`, "_self");
+    window.open(`sms:?body=${encodeURIComponent(title)}`, "_self");
   };
 
-  const queue = (data?.queue ?? []) as Action[];
-
   return (
-    <div className="min-h-screen bg-[#fdfbf7] text-[#1a1715]">
-      <div className="mx-auto max-w-xl px-6 pt-12 pb-24">
-        <header className="mb-12 text-center relative">
+    <div className="min-h-screen bg-[#fdfbf7] text-[#1a1715] flex flex-col">
+      {/* Voice-first hero — default focus */}
+      <section className="flex-1 flex flex-col items-center justify-center px-6 pt-10 pb-6 min-h-[55vh]">
+        <header className="w-full max-w-xl mb-10 text-center relative">
           <Link
             href="/follow-ups"
             className="absolute right-0 top-0 inline-flex items-center gap-1.5 text-sm font-semibold text-[#c8553d] hover:text-[#a8412e]"
@@ -145,123 +141,69 @@ export default function Home() {
             <ListChecks className="h-4 w-4" />
             Follow-ups
           </Link>
-          <h1 className="text-3xl font-bold tracking-tight">Clarity</h1>
-          <p className="mt-1 text-sm text-[#7a716b]">
-            {queue.length === 0
-              ? "Nothing on your mind."
-              : `${queue.length} ${queue.length === 1 ? "thing" : "things"} to do`}
+          <p className="text-xs font-semibold uppercase tracking-widest text-[#c8553d] mb-2">
+            Voice first
+          </p>
+          <h1 className="text-4xl font-bold tracking-tight font-serif">
+            Clarity
+          </h1>
+          <p className="mt-2 text-[#7a716b] text-sm max-w-sm mx-auto">
+            Speak a task. It lands on your list. No typing required.
           </p>
         </header>
 
-        <div className="flex flex-col items-center gap-4 mb-12">
-          <button
-            onClick={onMic}
-            disabled={isTranscribing}
-            aria-label={isRecording ? "Stop recording" : "Start recording"}
-            className={`relative flex h-32 w-32 items-center justify-center rounded-full text-white shadow-xl transition-all active:scale-95 disabled:opacity-60 ${
-              isRecording ? "bg-[#a8412e]" : "bg-[#c8553d] hover:bg-[#b34a35]"
-            }`}
-            style={{ boxShadow: "0 12px 28px -8px rgba(200,85,61,0.45)" }}
-          >
-            {isRecording && (
-              <span className="absolute inset-0 rounded-full bg-[#c8553d] opacity-40 animate-ping" />
-            )}
-            {isTranscribing ? (
-              <Loader2 className="h-10 w-10 animate-spin" />
-            ) : isRecording ? (
-              <Square className="h-10 w-10 fill-white" />
-            ) : (
-              <Mic className="h-10 w-10" />
-            )}
-          </button>
-          <p className="text-sm text-[#7a716b]">
-            {isTranscribing ? "Transcribing…" : isRecording ? "Tap to stop" : "Tap to speak — or press space"}
-          </p>
-        </div>
+        <VoiceCaptureButton
+          isRecording={isRecording}
+          isTranscribing={isTranscribing}
+          onPress={onMic}
+        />
 
-        <ul className="space-y-2">
-          {queue.map((a) => (
-            <li
-              key={a.id}
-              className="rounded-2xl border border-[#ebe5dd] bg-white p-4 relative"
-            >
-              <p className="text-[15px] leading-snug font-medium mb-3">{a.title}</p>
-              <div className="grid grid-cols-5 gap-2">
-                <PillBtn icon={<Check className="h-4 w-4" />} label="Done" tint="#5d7a4a" onClick={() => complete(a.id)} />
-                <PillBtn icon={<Mail className="h-4 w-4" />} label="Email" tint="#3a6b8a" onClick={() => email(a.title)} />
-                <PillBtn icon={<MessageSquare className="h-4 w-4" />} label="Text" tint="#c8553d" onClick={() => text(a.title)} />
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <button
-                      className="flex items-center justify-center gap-1.5 rounded-lg border bg-white py-2 text-xs font-semibold transition-colors hover:bg-[#b8862c10] active:scale-95"
-                      style={{ color: "#b8862c", borderColor: "#b8862c33" }}
-                    >
-                      <Moon className="h-4 w-4" />
-                      Snooze
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-36 p-1" align="end">
-                    <button
-                      onClick={() => snooze(a.id, 1)}
-                      className="w-full text-left rounded-md px-3 py-2 text-sm font-medium hover:bg-[#fbeae5]"
-                    >
-                      1 day
-                    </button>
-                    <button
-                      onClick={() => snooze(a.id, 7)}
-                      className="w-full text-left rounded-md px-3 py-2 text-sm font-medium hover:bg-[#fbeae5]"
-                    >
-                      1 week
-                    </button>
-                  </PopoverContent>
-                </Popover>
-                <button
-                  onClick={() => remove(a.id)}
-                  aria-label="Delete"
-                  className="flex items-center justify-center gap-1.5 rounded-lg border bg-white py-2 text-xs font-semibold text-[#c0392b] border-[#c0392b33] transition-colors hover:bg-[#c0392b10] active:scale-95"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Delete
-                </button>
-              </div>
-            </li>
-          ))}
-          {!isLoading && queue.length === 0 && (
-            <li className="text-center text-sm text-[#7a716b] py-12">
-              Speak something to capture your first action.
-            </li>
-          )}
-        </ul>
-      </div>
+        {lastCaptured && !isRecording && !isTranscribing && (
+          <div className="mt-8 max-w-md w-full rounded-2xl border border-[#c8553d33] bg-[#c8553d08] px-4 py-3 text-center">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#c8553d] mb-1">
+              Just added
+            </p>
+            <p className="text-sm text-[#1a1715] leading-snug">{lastCaptured}</p>
+          </div>
+        )}
+      </section>
+
+      {/* Tasks — secondary panel, collapsed by default */}
+      <section className="border-t border-[#ebe5dd] bg-white/80 backdrop-blur-sm rounded-t-3xl shadow-[0_-8px_30px_-12px_rgba(0,0,0,0.08)]">
+        <button
+          type="button"
+          onClick={() => setTasksOpen((o) => !o)}
+          className="w-full flex items-center justify-between px-6 py-4 text-left"
+          aria-expanded={tasksOpen}
+        >
+          <div>
+            <p className="text-sm font-semibold text-[#1a1715]">Your tasks</p>
+            <p className="text-xs text-[#7a716b]">
+              {queue.length === 0
+                ? "Nothing queued yet"
+                : `${queue.length} ${queue.length === 1 ? "task" : "tasks"} waiting`}
+            </p>
+          </div>
+          <ChevronUp
+            className={`h-5 w-5 text-[#7a716b] transition-transform ${tasksOpen ? "" : "rotate-180"}`}
+          />
+        </button>
+
+        {tasksOpen && (
+          <div className="px-6 pb-8 max-w-xl mx-auto w-full">
+            <TaskPanel
+              tasks={queue}
+              isLoading={isLoading}
+              onComplete={complete}
+              onSnooze={snooze}
+              onDelete={remove}
+              onEmail={email}
+              onText={text}
+              compact
+            />
+          </div>
+        )}
+      </section>
     </div>
-  );
-}
-
-function PillBtn({
-  icon,
-  label,
-  tint,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  tint: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="flex items-center justify-center gap-1.5 rounded-lg border bg-white py-2 text-xs font-semibold transition-colors hover:bg-[var(--tint-bg)] active:scale-95"
-      style={
-        {
-          color: tint,
-          borderColor: `${tint}33`,
-          ["--tint-bg" as string]: `${tint}10`,
-        } as React.CSSProperties
-      }
-    >
-      {icon}
-      {label}
-    </button>
   );
 }
