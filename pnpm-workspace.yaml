@@ -73,6 +73,14 @@ catalog:
 
 autoInstallPeers: false
 
+# pnpm 11+ requires explicit approval for install scripts (security).
+allowBuilds:
+  '@swc/core': true
+  dtrace-provider: true
+  esbuild: true
+  msw: true
+  unrs-resolver: true
+
 onlyBuiltDependencies:
   - '@swc/core'
   - esbuild
@@ -182,7 +190,3 @@ overrides:
   "postcss": "8.5.13"
   # GHSA-w5hq-g745-h8pq: uuid missing buffer bounds check
   "uuid": "14.0.0"
-
-allowBuilds:
-  dtrace-provider: set this to true or false
-  esbuild: set this to true or false
