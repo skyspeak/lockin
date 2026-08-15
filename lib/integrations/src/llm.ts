@@ -27,7 +27,35 @@ function parseProvider(raw: string | undefined): ChatProvider {
   return "openrouter";
 }
 
+export function resolveGeminiConfig(): ChatConfig | null {
+  const apiKey = process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY ?? "";
+  if (!apiKey) return null;
+  return {
+    provider: "gemini",
+    baseURL: GEMINI_DEFAULTS.baseURL,
+    apiKey,
+    model: process.env.GEMINI_MODEL ?? GEMINI_DEFAULTS.model,
+  };
+}
+
+export function resolveOpenRouterConfig(): ChatConfig | null {
+  const apiKey = process.env.OPENROUTER_API_KEY ?? "";
+  if (!apiKey) return null;
+  return {
+    provider: "openrouter",
+    baseURL: OPENROUTER_DEFAULTS.baseURL,
+    apiKey,
+    model: process.env.OPENROUTER_MODEL ?? OPENROUTER_DEFAULTS.model,
+  };
+}
+
 export function resolveChatConfig(): ChatConfig {
+  const gemini = resolveGeminiConfig();
+  if (gemini) return gemini;
+
+  const openrouter = resolveOpenRouterConfig();
+  if (openrouter) return openrouter;
+
   const provider = parseProvider(process.env.AI_CHAT_PROVIDER ?? process.env.AI_PROVIDER);
 
   if (provider === "openrouter") {
@@ -71,7 +99,7 @@ export function resolveChatConfig(): ChatConfig {
 export function createChatClient(config = resolveChatConfig()): OpenAI {
   if (!config.apiKey) {
     throw new Error(
-      `Missing API key for AI provider "${config.provider}". Set AI_CHAT_API_KEY or the provider-specific key.`,
+      `Missing API key for AI provider "${config.provider}". Set GEMINI_API_KEY or OPENROUTER_API_KEY.`,
     );
   }
   if (!config.baseURL) {
@@ -97,12 +125,11 @@ export function createChatClient(config = resolveChatConfig()): OpenAI {
   });
 }
 
-export async function chatCompletionJson(
+async function completeJsonWithConfig(
+  config: ChatConfig,
   messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
 ): Promise<string> {
-  const config = resolveChatConfig();
   const client = createChatClient(config);
-
   const response = await client.chat.completions.create({
     model: config.model,
     response_format: { type: "json_object" },
@@ -114,4 +141,38 @@ export async function chatCompletionJson(
     throw new Error("Empty LLM response");
   }
   return raw;
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+export async function chatCompletionJson(
+  messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+): Promise<string> {
+  const gemini = resolveGeminiConfig();
+  const openrouter = resolveOpenRouterConfig();
+  const errors: string[] = [];
+
+  if (gemini) {
+    try {
+      return await completeJsonWithConfig(gemini, messages);
+    } catch (err) {
+      errors.push(`gemini: ${errorMessage(err)}`);
+    }
+  }
+
+  if (openrouter) {
+    try {
+      return await completeJsonWithConfig(openrouter, messages);
+    } catch (err) {
+      errors.push(`openrouter: ${errorMessage(err)}`);
+    }
+  }
+
+  if (!gemini && !openrouter) {
+    return completeJsonWithConfig(resolveChatConfig(), messages);
+  }
+
+  throw new Error(`LLM request failed (${errors.join("; ") || "no providers configured"})`);
 }

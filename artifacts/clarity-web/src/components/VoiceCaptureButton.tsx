@@ -43,7 +43,7 @@ export function VoiceCaptureButton({
       <p className="text-sm text-[#7a716b] text-center max-w-xs">
         {hint ??
           (isTranscribing
-            ? "Transcribing your task…"
+            ? "Turning that into tasks…"
             : isRecording
               ? "Tap to stop"
               : "Tap to speak — or press space")}

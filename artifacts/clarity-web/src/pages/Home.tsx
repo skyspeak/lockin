@@ -5,7 +5,6 @@ import {
   useUpdateAction,
   useDeleteAction,
   useSnoozeAction,
-  useCreateAction,
   getGetActionQueueUrl,
 } from "@workspace/api-client-react";
 import { ChevronUp, ListChecks } from "lucide-react";
@@ -23,13 +22,12 @@ export default function Home() {
   const updateAction = useUpdateAction();
   const deleteAction = useDeleteAction();
   const snoozeAction = useSnoozeAction();
-  const createAction = useCreateAction();
   const { toast } = useToast();
 
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [tasksOpen, setTasksOpen] = useState(false);
-  const [lastCaptured, setLastCaptured] = useState<string | null>(null);
+  const [lastCaptured, setLastCaptured] = useState<string[]>([]);
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
 
@@ -52,24 +50,26 @@ export default function Home() {
         try {
           const form = new FormData();
           form.append("audio", blob, "audio.webm");
-          const res = await fetch(`${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/transcribe`, {
+          const res = await fetch(`${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/capture`, {
             method: "POST",
             body: form,
             headers: { Authorization: `Bearer ${apiKey}` },
           });
-          if (!res.ok) throw new Error("transcribe failed");
-          const { text } = (await res.json()) as { text: string };
-          const trimmed = text?.trim();
-          if (!trimmed) {
+          if (!res.ok) throw new Error("capture failed");
+          const json = (await res.json()) as { transcript?: string; actions?: { title: string }[] };
+          const titles = (json.actions ?? []).map((a) => a.title).filter(Boolean);
+          if (titles.length === 0) {
             toast({ title: "Nothing captured", description: "Try speaking again." });
             return;
           }
-          await createAction.mutateAsync({ data: { title: trimmed, priority: "medium" } });
-          setLastCaptured(trimmed);
+          setLastCaptured(titles);
           invalidate();
-          toast({ title: "Task added", description: trimmed });
+          toast({
+            title: titles.length === 1 ? "Task added" : `${titles.length} tasks added`,
+            description: titles.join(" · "),
+          });
         } catch {
-          toast({ title: "Transcription failed", variant: "destructive" });
+          toast({ title: "Couldn't turn that into tasks", variant: "destructive" });
         } finally {
           setIsTranscribing(false);
         }
@@ -84,7 +84,7 @@ export default function Home() {
         variant: "destructive",
       });
     }
-  }, [apiKey, createAction, invalidate, toast]);
+  }, [apiKey, invalidate, toast]);
 
   const stopRecording = useCallback(() => {
     mediaRecorder.current?.stop();
@@ -148,7 +148,7 @@ export default function Home() {
             Clarity
           </h1>
           <p className="mt-2 text-[#7a716b] text-sm max-w-sm mx-auto">
-            Speak a task. It lands on your list. No typing required.
+            Speak a thought. I'll turn it into tasks.
           </p>
         </header>
 
@@ -158,12 +158,18 @@ export default function Home() {
           onPress={onMic}
         />
 
-        {lastCaptured && !isRecording && !isTranscribing && (
+        {lastCaptured.length > 0 && !isRecording && !isTranscribing && (
           <div className="mt-8 max-w-md w-full rounded-2xl border border-[#c8553d33] bg-[#c8553d08] px-4 py-3 text-center">
             <p className="text-xs font-semibold uppercase tracking-wide text-[#c8553d] mb-1">
               Just added
             </p>
-            <p className="text-sm text-[#1a1715] leading-snug">{lastCaptured}</p>
+            <ul className="space-y-1">
+              {lastCaptured.map((title, index) => (
+                <li key={`${index}-${title}`} className="text-sm text-[#1a1715] leading-snug">
+                  {title}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
       </section>

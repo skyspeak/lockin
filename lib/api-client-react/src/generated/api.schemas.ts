@@ -30,17 +30,35 @@ export const Priority = {
   high: "high",
 } as const;
 
+export type ActionCategory =
+  (typeof ActionCategory)[keyof typeof ActionCategory];
+
+export const ActionCategory = {
+  work: "work",
+  family: "family",
+  hobbies: "hobbies",
+  extracurriculars: "extracurriculars",
+  other: "other",
+} as const;
+
 export interface Action {
   id: number;
   userId: string;
   title: string;
   description?: string | null;
+  category: ActionCategory;
   status: ActionStatus;
   priority: Priority;
+  thoughtId?: number | null;
   snoozedUntil?: string | null;
   completedAt?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CaptureResult {
+  transcript: string;
+  actions: Action[];
 }
 
 export interface CreateActionBody {
@@ -51,6 +69,7 @@ export interface CreateActionBody {
   title: string;
   /** @maxLength 2000 */
   description?: string;
+  category?: ActionCategory;
   priority?: Priority;
 }
 
@@ -62,6 +81,7 @@ export interface UpdateActionBody {
   title?: string;
   /** @maxLength 2000 */
   description?: string;
+  category?: ActionCategory;
   status?: ActionStatus;
   priority?: Priority;
 }
@@ -74,33 +94,8 @@ export interface SnoozeActionBody {
   days?: number;
 }
 
-export type ListActionsParams = {
-  status?: ActionStatus;
-  includeSnoozed?: boolean;
-  /**
-   * @minimum 1
-   * @maximum 200
-   */
-  limit?: number;
-  /**
-   * @minimum 0
-   * @maximum 100000
-   */
-  offset?: number;
-};
-
-export type ListActions200 = {
-  actions: Action[];
-  total: number;
-};
-
-export type GetActionQueue200 = {
-  queue: Action[];
-  snoozedCount: number;
-  doneCount: number;
-};
-
-export type FollowUpPlanStatus = (typeof FollowUpPlanStatus)[keyof typeof FollowUpPlanStatus];
+export type FollowUpPlanStatus =
+  (typeof FollowUpPlanStatus)[keyof typeof FollowUpPlanStatus];
 
 export const FollowUpPlanStatus = {
   generating: "generating",
@@ -132,6 +127,37 @@ export interface FollowUpPlan {
 export interface ToggleFollowUpTodoBody {
   done: boolean;
 }
+
+export type CaptureThoughtBody = {
+  /** Recorded voice note */
+  audio: Blob;
+};
+
+export type ListActionsParams = {
+  status?: ActionStatus;
+  includeSnoozed?: boolean;
+  /**
+   * @minimum 1
+   * @maximum 200
+   */
+  limit?: number;
+  /**
+   * @minimum 0
+   * @maximum 100000
+   */
+  offset?: number;
+};
+
+export type ListActions200 = {
+  actions: Action[];
+  total: number;
+};
+
+export type GetActionQueue200 = {
+  queue: Action[];
+  snoozedCount: number;
+  doneCount: number;
+};
 
 export type ListFollowUpPlansParams = {
   /**

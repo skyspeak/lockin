@@ -18,6 +18,8 @@ import type {
 
 import type {
   Action,
+  CaptureResult,
+  CaptureThoughtBody,
   CreateActionBody,
   ErrorResponse,
   FollowUpPlan,
@@ -115,6 +117,94 @@ export function useHealthCheck<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Transcribe a voice note and extract classified action items
+ */
+export const getCaptureThoughtUrl = () => {
+  return `/api/capture`;
+};
+
+export const captureThought = async (
+  captureThoughtBody: CaptureThoughtBody,
+  options?: RequestInit,
+): Promise<CaptureResult> => {
+  const formData = new FormData();
+  formData.append(`audio`, captureThoughtBody.audio);
+
+  return customFetch<CaptureResult>(getCaptureThoughtUrl(), {
+    ...options,
+    method: "POST",
+    body: formData,
+  });
+};
+
+export const getCaptureThoughtMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof captureThought>>,
+    TError,
+    { data: BodyType<CaptureThoughtBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof captureThought>>,
+  TError,
+  { data: BodyType<CaptureThoughtBody> },
+  TContext
+> => {
+  const mutationKey = ["captureThought"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof captureThought>>,
+    { data: BodyType<CaptureThoughtBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return captureThought(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CaptureThoughtMutationResult = NonNullable<
+  Awaited<ReturnType<typeof captureThought>>
+>;
+export type CaptureThoughtMutationBody = BodyType<CaptureThoughtBody>;
+export type CaptureThoughtMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Transcribe a voice note and extract classified action items
+ */
+export const useCaptureThought = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof captureThought>>,
+    TError,
+    { data: BodyType<CaptureThoughtBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof captureThought>>,
+  TError,
+  { data: BodyType<CaptureThoughtBody> },
+  TContext
+> => {
+  return useMutation(getCaptureThoughtMutationOptions(options));
+};
 
 /**
  * @summary List all actions for the authenticated user
@@ -658,7 +748,9 @@ export const listFollowUpPlans = async (
   });
 };
 
-export const getListFollowUpPlansQueryKey = (params?: ListFollowUpPlansParams) => {
+export const getListFollowUpPlansQueryKey = (
+  params?: ListFollowUpPlansParams,
+) => {
   return [`/api/follow-up-plans`, ...(params ? [params] : [])] as const;
 };
 
@@ -678,11 +770,12 @@ export const getListFollowUpPlansQueryOptions = <
 ) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getListFollowUpPlansQueryKey(params);
+  const queryKey =
+    queryOptions?.queryKey ?? getListFollowUpPlansQueryKey(params);
 
-  const queryFn: QueryFunction<Awaited<ReturnType<typeof listFollowUpPlans>>> = ({
-    signal,
-  }) => listFollowUpPlans(params, { signal, ...requestOptions });
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listFollowUpPlans>>
+  > = ({ signal }) => listFollowUpPlans(params, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof listFollowUpPlans>>,
@@ -695,6 +788,10 @@ export type ListFollowUpPlansQueryResult = NonNullable<
   Awaited<ReturnType<typeof listFollowUpPlans>>
 >;
 export type ListFollowUpPlansQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary List follow-up plans for the authenticated user
+ */
 
 export function useListFollowUpPlans<
   TData = Awaited<ReturnType<typeof listFollowUpPlans>>,
@@ -762,7 +859,12 @@ export const getGetFollowUpPlanQueryOptions = <
     signal,
   }) => getFollowUpPlan(id, { signal, ...requestOptions });
 
-  return { queryKey, queryFn, enabled: !!id, ...queryOptions } as UseQueryOptions<
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
     Awaited<ReturnType<typeof getFollowUpPlan>>,
     TError,
     TData
@@ -773,6 +875,10 @@ export type GetFollowUpPlanQueryResult = NonNullable<
   Awaited<ReturnType<typeof getFollowUpPlan>>
 >;
 export type GetFollowUpPlanQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Get a follow-up plan by id
+ */
 
 export function useGetFollowUpPlan<
   TData = Awaited<ReturnType<typeof getFollowUpPlan>>,
@@ -801,7 +907,7 @@ export function useGetFollowUpPlan<
  * @summary Toggle done state on a user todo in a follow-up plan
  */
 export const getToggleFollowUpTodoUrl = (id: number, todoId: string) => {
-  return `/api/follow-up-plans/${id}/todos/${encodeURIComponent(todoId)}`;
+  return `/api/follow-up-plans/${id}/todos/${todoId}`;
 };
 
 export const toggleFollowUpTodo = async (
@@ -862,6 +968,9 @@ export type ToggleFollowUpTodoMutationResult = NonNullable<
 export type ToggleFollowUpTodoMutationBody = BodyType<ToggleFollowUpTodoBody>;
 export type ToggleFollowUpTodoMutationError = ErrorType<ErrorResponse>;
 
+/**
+ * @summary Toggle done state on a user todo in a follow-up plan
+ */
 export const useToggleFollowUpTodo = <
   TError = ErrorType<ErrorResponse>,
   TContext = unknown,

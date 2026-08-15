@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: capture
+    description: Voice thought capture
   - name: actions
     description: Action queue management
   - name: followUpPlans
@@ -28,6 +30,51 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /capture:
+    post:
+      operationId: captureThought
+      tags: [capture]
+      summary: Transcribe a voice note and extract classified action items
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [audio]
+              properties:
+                audio:
+                  type: string
+                  format: binary
+                  description: Recorded voice note
+      responses:
+        "200":
+          description: Transcript and extracted actions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaptureResult"
+        "400":
+          description: Missing audio or empty transcript
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "415":
+          description: Unsupported audio type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /actions:
     get:
@@ -399,6 +446,15 @@ components:
         - medium
         - high
 
+    ActionCategory:
+      type: string
+      enum:
+        - work
+        - family
+        - hobbies
+        - extracurriculars
+        - other
+
     Action:
       type: object
       properties:
@@ -411,10 +467,15 @@ components:
         description:
           type: string
           nullable: true
+        category:
+          $ref: "#/components/schemas/ActionCategory"
         status:
           $ref: "#/components/schemas/ActionStatus"
         priority:
           $ref: "#/components/schemas/Priority"
+        thoughtId:
+          type: integer
+          nullable: true
         snoozedUntil:
           type: string
           format: date-time
@@ -429,7 +490,18 @@ components:
         updatedAt:
           type: string
           format: date-time
-      required: [id, userId, title, status, priority, createdAt, updatedAt]
+      required: [id, userId, title, category, status, priority, createdAt, updatedAt]
+
+    CaptureResult:
+      type: object
+      properties:
+        transcript:
+          type: string
+        actions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Action"
+      required: [transcript, actions]
 
     CreateActionBody:
       type: object
@@ -441,6 +513,8 @@ components:
         description:
           type: string
           maxLength: 2000
+        category:
+          $ref: "#/components/schemas/ActionCategory"
         priority:
           $ref: "#/components/schemas/Priority"
       required: [title]
@@ -455,6 +529,8 @@ components:
         description:
           type: string
           maxLength: 2000
+        category:
+          $ref: "#/components/schemas/ActionCategory"
         status:
           $ref: "#/components/schemas/ActionStatus"
         priority:

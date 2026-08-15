@@ -1,11 +1,11 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   Alert,
-  FlatList,
   Linking,
   Platform,
   Pressable,
   RefreshControl,
+  SectionList,
   StyleSheet,
   Text,
   View,
@@ -39,6 +39,25 @@ type Action = {
   title: string;
   status: string;
   priority: string;
+  category?: string;
+};
+
+const CATEGORY_ORDER = ["work", "family", "hobbies", "extracurriculars", "other"] as const;
+
+const CATEGORY_LABELS: Record<string, string> = {
+  work: "Work",
+  family: "Family",
+  hobbies: "Hobbies",
+  extracurriculars: "Extracurriculars",
+  other: "Other",
+};
+
+const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
+  work: { bg: "#dbeafe", text: "#1e40af" },
+  family: { bg: "#fef3c7", text: "#92400e" },
+  hobbies: { bg: "#ede9fe", text: "#6d28d9" },
+  extracurriculars: { bg: "#ccfbf1", text: "#134e4a" },
+  other: { bg: "#f3f4f6", text: "#374151" },
 };
 
 export function TaskListScreen() {
@@ -61,6 +80,24 @@ export function TaskListScreen() {
   }, [refetch]);
 
   const queue = (data?.queue ?? []) as Action[];
+  const sections = useMemo(() => {
+    const sorted = [...queue].sort((a, b) => {
+      const ai = CATEGORY_ORDER.indexOf((a.category ?? "other") as (typeof CATEGORY_ORDER)[number]);
+      const bi = CATEGORY_ORDER.indexOf((b.category ?? "other") as (typeof CATEGORY_ORDER)[number]);
+      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    });
+    const grouped: Array<{ title: string; data: Action[] }> = [];
+    for (const item of sorted) {
+      const category = item.category ?? "other";
+      const last = grouped[grouped.length - 1];
+      if (last && last.title === category) {
+        last.data.push(item);
+      } else {
+        grouped.push({ title: category, data: [item] });
+      }
+    }
+    return grouped;
+  }, [queue]);
 
   const handleComplete = useCallback(
     async (id: number) => {
@@ -128,9 +165,10 @@ export function TaskListScreen() {
             : `${queue.length} ${queue.length === 1 ? "task" : "tasks"} in your queue`}
         </Text>
       </View>
-      <FlatList
-        data={queue}
+      <SectionList
+        sections={sections}
         keyExtractor={(item) => String(item.id)}
+        stickySectionHeadersEnabled={false}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.accent} />
@@ -142,20 +180,36 @@ export function TaskListScreen() {
             </View>
           ) : null
         }
-        renderItem={({ item }) => (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle} numberOfLines={4}>
-              {item.title}
-            </Text>
-            <View style={styles.row}>
-              <ActionBtn label="Done" tint={COLORS.green} onPress={() => handleComplete(item.id)} />
-              <ActionBtn label="Email" tint={COLORS.blue} onPress={() => handleEmail(item.title)} />
-              <ActionBtn label="Text" tint={COLORS.accent} onPress={() => handleText(item.title)} />
-              <ActionBtn label="Snooze" tint={COLORS.amber} onPress={() => handleSnooze(item.id)} />
-              <ActionBtn label="Delete" tint={COLORS.red} onPress={() => handleDelete(item.id)} />
-            </View>
-          </View>
+        renderSectionHeader={({ section }) => (
+          <Text style={styles.sectionTitle}>
+            {CATEGORY_LABELS[section.title] ?? section.title}
+          </Text>
         )}
+        renderItem={({ item }) => {
+          const category = item.category ?? "other";
+          const chip = CATEGORY_COLORS[category] ?? CATEGORY_COLORS.other;
+          return (
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardTitle} numberOfLines={4}>
+                  {item.title}
+                </Text>
+                <View style={[styles.chip, { backgroundColor: chip.bg }]}>
+                  <Text style={[styles.chipText, { color: chip.text }]}>
+                    {CATEGORY_LABELS[category] ?? category}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.row}>
+                <ActionBtn label="Done" tint={COLORS.green} onPress={() => handleComplete(item.id)} />
+                <ActionBtn label="Email" tint={COLORS.blue} onPress={() => handleEmail(item.title)} />
+                <ActionBtn label="Text" tint={COLORS.accent} onPress={() => handleText(item.title)} />
+                <ActionBtn label="Snooze" tint={COLORS.amber} onPress={() => handleSnooze(item.id)} />
+                <ActionBtn label="Delete" tint={COLORS.red} onPress={() => handleDelete(item.id)} />
+              </View>
+            </View>
+          );
+        }}
       />
     </SafeAreaView>
   );
@@ -195,7 +249,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: COLORS.ink,
     lineHeight: 22,
-    marginBottom: 12,
+    flex: 1,
+  },
+  cardHeader: { flexDirection: "row", alignItems: "flex-start", gap: 8, marginBottom: 12 },
+  chip: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
+  chipText: { fontFamily: "Inter_600SemiBold", fontSize: 10, textTransform: "uppercase" },
+  sectionTitle: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 11,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: COLORS.inkDim,
+    marginBottom: 8,
+    marginTop: 8,
+    backgroundColor: COLORS.bg,
   },
   row: { flexDirection: "row", gap: 6 },
   btn: {

@@ -15,6 +15,39 @@ export const HealthCheckResponse = zod.object({
 });
 
 /**
+ * @summary Transcribe a voice note and extract classified action items
+ */
+export const CaptureThoughtBody = zod.object({
+  audio: zod.instanceof(File).describe("Recorded voice note"),
+});
+
+export const CaptureThoughtResponse = zod.object({
+  transcript: zod.string(),
+  actions: zod.array(
+    zod.object({
+      id: zod.number(),
+      userId: zod.string(),
+      title: zod.string(),
+      description: zod.string().nullish(),
+      category: zod.enum([
+        "work",
+        "family",
+        "hobbies",
+        "extracurriculars",
+        "other",
+      ]),
+      status: zod.enum(["pending", "in-progress", "done", "dismissed"]),
+      priority: zod.enum(["low", "medium", "high"]),
+      thoughtId: zod.number().nullish(),
+      snoozedUntil: zod.coerce.date().nullish(),
+      completedAt: zod.coerce.date().nullish(),
+      createdAt: zod.coerce.date(),
+      updatedAt: zod.coerce.date(),
+    }),
+  ),
+});
+
+/**
  * @summary List all actions for the authenticated user
  */
 export const listActionsQueryIncludeSnoozedDefault = false;
@@ -49,8 +82,16 @@ export const ListActionsResponse = zod.object({
       userId: zod.string(),
       title: zod.string(),
       description: zod.string().nullish(),
+      category: zod.enum([
+        "work",
+        "family",
+        "hobbies",
+        "extracurriculars",
+        "other",
+      ]),
       status: zod.enum(["pending", "in-progress", "done", "dismissed"]),
       priority: zod.enum(["low", "medium", "high"]),
+      thoughtId: zod.number().nullish(),
       snoozedUntil: zod.coerce.date().nullish(),
       completedAt: zod.coerce.date().nullish(),
       createdAt: zod.coerce.date(),
@@ -70,6 +111,9 @@ export const createActionBodyDescriptionMax = 2000;
 export const CreateActionBody = zod.object({
   title: zod.string().min(1).max(createActionBodyTitleMax),
   description: zod.string().max(createActionBodyDescriptionMax).optional(),
+  category: zod
+    .enum(["work", "family", "hobbies", "extracurriculars", "other"])
+    .optional(),
   priority: zod.enum(["low", "medium", "high"]).optional(),
 });
 
@@ -83,8 +127,16 @@ export const GetActionQueueResponse = zod.object({
       userId: zod.string(),
       title: zod.string(),
       description: zod.string().nullish(),
+      category: zod.enum([
+        "work",
+        "family",
+        "hobbies",
+        "extracurriculars",
+        "other",
+      ]),
       status: zod.enum(["pending", "in-progress", "done", "dismissed"]),
       priority: zod.enum(["low", "medium", "high"]),
+      thoughtId: zod.number().nullish(),
       snoozedUntil: zod.coerce.date().nullish(),
       completedAt: zod.coerce.date().nullish(),
       createdAt: zod.coerce.date(),
@@ -110,6 +162,9 @@ export const updateActionBodyDescriptionMax = 2000;
 export const UpdateActionBody = zod.object({
   title: zod.string().min(1).max(updateActionBodyTitleMax).optional(),
   description: zod.string().max(updateActionBodyDescriptionMax).optional(),
+  category: zod
+    .enum(["work", "family", "hobbies", "extracurriculars", "other"])
+    .optional(),
   status: zod.enum(["pending", "in-progress", "done", "dismissed"]).optional(),
   priority: zod.enum(["low", "medium", "high"]).optional(),
 });
@@ -119,8 +174,16 @@ export const UpdateActionResponse = zod.object({
   userId: zod.string(),
   title: zod.string(),
   description: zod.string().nullish(),
+  category: zod.enum([
+    "work",
+    "family",
+    "hobbies",
+    "extracurriculars",
+    "other",
+  ]),
   status: zod.enum(["pending", "in-progress", "done", "dismissed"]),
   priority: zod.enum(["low", "medium", "high"]),
+  thoughtId: zod.number().nullish(),
   snoozedUntil: zod.coerce.date().nullish(),
   completedAt: zod.coerce.date().nullish(),
   createdAt: zod.coerce.date(),
@@ -159,8 +222,16 @@ export const SnoozeActionResponse = zod.object({
   userId: zod.string(),
   title: zod.string(),
   description: zod.string().nullish(),
+  category: zod.enum([
+    "work",
+    "family",
+    "hobbies",
+    "extracurriculars",
+    "other",
+  ]),
   status: zod.enum(["pending", "in-progress", "done", "dismissed"]),
   priority: zod.enum(["low", "medium", "high"]),
+  thoughtId: zod.number().nullish(),
   snoozedUntil: zod.coerce.date().nullish(),
   completedAt: zod.coerce.date().nullish(),
   createdAt: zod.coerce.date(),
