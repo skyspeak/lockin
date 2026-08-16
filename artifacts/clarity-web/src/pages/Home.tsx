@@ -4,7 +4,6 @@ import {
   useGetActionQueue,
   useUpdateAction,
   useDeleteAction,
-  useSnoozeAction,
   getGetActionQueueUrl,
 } from "@workspace/api-client-react";
 import { ChevronUp } from "lucide-react";
@@ -20,15 +19,18 @@ export default function Home() {
   const { data, isLoading } = useGetActionQueue();
   const updateAction = useUpdateAction();
   const deleteAction = useDeleteAction();
-  const snoozeAction = useSnoozeAction();
   const { toast } = useToast();
 
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [tasksOpen, setTasksOpen] = useState(true);
   const [lastCaptured, setLastCaptured] = useState<{ title: string; nextSteps: string[] }[]>([]);
+  const [refiningId, setRefiningId] = useState<number | null>(null);
+  const [isRefining, setIsRefining] = useState(false);
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
+  const refineRecorder = useRef<MediaRecorder | null>(null);
+  const refineChunks = useRef<Blob[]>([]);
 
   const invalidate = useCallback(() => {
     qc.invalidateQueries({ queryKey: [queueKey] });
@@ -128,22 +130,79 @@ export default function Home() {
     await updateAction.mutateAsync({ id, data: { status: "done" } });
     invalidate();
   };
-  const snooze = async (id: number, days: number) => {
-    await snoozeAction.mutateAsync({ id, data: { days } });
-    invalidate();
-    toast({ title: days === 1 ? "Snoozed until tomorrow" : `Snoozed for ${days} days` });
-  };
   const remove = async (id: number) => {
-    if (!window.confirm("Delete this task?")) return;
     await deleteAction.mutateAsync({ id });
     invalidate();
   };
-  const email = (title: string) => {
-    window.open(`https://mail.google.com/mail/?view=cm&body=${encodeURIComponent(title)}`, "_blank");
-  };
-  const text = (title: string) => {
-    window.open(`sms:?body=${encodeURIComponent(title)}`, "_self");
-  };
+
+  const sendRefine = useCallback(
+    async (id: number, blob: Blob) => {
+      setIsRefining(true);
+      try {
+        const form = new FormData();
+        const blobType = blob.type || "audio/webm";
+        const filename = blobType.includes("mp4") || blobType.includes("m4a") ? "audio.m4a" : "audio.webm";
+        form.append("audio", blob, filename);
+        const res = await fetch(`/api/actions/${id}/refine`, {
+          method: "POST",
+          body: form,
+          headers: { Authorization: `Bearer ${apiKey}` },
+        });
+        if (!res.ok) {
+          let detail = "Couldn't refine that";
+          try {
+            const body = (await res.json()) as { error?: string };
+            if (body.error) detail = body.error;
+          } catch {
+            detail = `Server returned ${res.status}`;
+          }
+          toast({ title: detail, variant: "destructive" });
+          return;
+        }
+        invalidate();
+        toast({ title: "Task refined" });
+      } catch {
+        toast({ title: "Couldn't refine that", variant: "destructive" });
+      } finally {
+        setIsRefining(false);
+        setRefiningId(null);
+      }
+    },
+    [apiKey, invalidate, toast],
+  );
+
+  const onRefine = useCallback(
+    async (id: number) => {
+      if (isRefining) return;
+      if (refiningId === id) {
+        refineRecorder.current?.stop();
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mr = new MediaRecorder(stream);
+        refineChunks.current = [];
+        mr.ondataavailable = (e) => {
+          if (e.data.size > 0) refineChunks.current.push(e.data);
+        };
+        mr.onstop = async () => {
+          stream.getTracks().forEach((t) => t.stop());
+          const blob = new Blob(refineChunks.current, { type: mr.mimeType || "audio/webm" });
+          await sendRefine(id, blob);
+        };
+        mr.start();
+        refineRecorder.current = mr;
+        setRefiningId(id);
+      } catch {
+        toast({
+          title: "Microphone blocked",
+          description: "Allow microphone access to refine a task.",
+          variant: "destructive",
+        });
+      }
+    },
+    [isRefining, refiningId, sendRefine, toast],
+  );
 
   return (
     <div className="min-h-screen bg-[#fdfbf7] text-[#1a1715] flex flex-col">
@@ -219,10 +278,10 @@ export default function Home() {
               tasks={queue}
               isLoading={isLoading}
               onComplete={complete}
-              onSnooze={snooze}
               onDelete={remove}
-              onEmail={email}
-              onText={text}
+              onRefine={onRefine}
+              refiningId={refiningId}
+              isRefining={isRefining}
               compact
             />
           </div>

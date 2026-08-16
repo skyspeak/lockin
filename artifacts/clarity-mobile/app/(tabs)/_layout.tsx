@@ -37,8 +37,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="follow-ups"
         options={{
-          title: "Follow-ups",
-          tabBarIcon: ({ color }) => <TabIcon emoji="→" color={color} />,
+          href: null,
         }}
       />
       <Tabs.Screen

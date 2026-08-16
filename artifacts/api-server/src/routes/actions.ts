@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { actionsTable } from "@workspace/db";
 import { eq, desc, and, or, isNull, lte, sql } from "drizzle-orm";
+import { transcribeAudio, refineActionFromNote } from "@workspace/integrations";
 import {
   CreateActionBody,
   UpdateActionBody,
@@ -12,6 +13,12 @@ import {
   SnoozeActionBody,
 } from "@workspace/api-zod";
 import { enqueueFollowUpPlan } from "../services/followUpPlan";
+import {
+  audioLimiter,
+  audioUpload,
+  safeAudioFilename,
+  sniffAudioMime,
+} from "../lib/audioUpload";
 
 const router = Router();
 
@@ -108,6 +115,72 @@ router.get("/queue", async (req, res) => {
     );
 
   return res.json({ queue, snoozedCount, doneCount });
+});
+
+function publicRefineError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : "Refine failed";
+  return raw.replace(/key=[^&\s"']+/gi, "key=***").slice(0, 220);
+}
+
+router.post("/:id/refine", audioLimiter, audioUpload.single("audio"), async (req, res) => {
+  const rawId = Number(req.params.id);
+  if (!Number.isInteger(rawId) || rawId < 1) {
+    return res.status(400).json({ error: "Invalid id" });
+  }
+  if (!req.file) {
+    return res.status(400).json({ error: "Missing audio file (field name: 'audio')" });
+  }
+  if (req.file.buffer.length < 8) {
+    return res.status(400).json({ error: "Recording too short. Speak the refinement, then stop." });
+  }
+
+  const sniffed = sniffAudioMime(req.file.buffer);
+  if (!sniffed) {
+    return res.status(415).json({ error: "Unsupported audio type" });
+  }
+
+  const userId = req.userId;
+  const [existing] = await db
+    .select()
+    .from(actionsTable)
+    .where(and(eq(actionsTable.id, rawId), eq(actionsTable.userId, userId)));
+
+  if (!existing) return res.status(404).json({ error: "Action not found" });
+
+  try {
+    const note = await transcribeAudio({
+      buffer: req.file.buffer,
+      mime: sniffed,
+      filename: safeAudioFilename(req.file.originalname),
+    });
+    if (!note.trim()) {
+      return res.status(400).json({ error: "Nothing captured. Try speaking again." });
+    }
+
+    const refined = await refineActionFromNote({
+      title: existing.title,
+      nextSteps: Array.isArray(existing.nextSteps) ? existing.nextSteps : [],
+      note,
+    });
+
+    const [action] = await db
+      .update(actionsTable)
+      .set({
+        title: refined.title,
+        nextSteps: refined.nextSteps,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(actionsTable.id, rawId), eq(actionsTable.userId, userId)))
+      .returning();
+
+    return res.json({ transcript: note.trim(), action });
+  } catch (err) {
+    req.log.error(
+      { err: err instanceof Error ? err.message : "unknown" },
+      "refine failed",
+    );
+    return res.status(500).json({ error: publicRefineError(err) });
+  }
 });
 
 router.put("/:id", async (req, res) => {

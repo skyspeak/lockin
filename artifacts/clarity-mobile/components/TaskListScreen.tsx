@@ -1,25 +1,24 @@
 import React, { useCallback, useMemo, useState } from "react";
-import {
-  Alert,
-  Linking,
-  Platform,
-  Pressable,
-  RefreshControl,
-  SectionList,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Alert, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { SectionList, Swipeable } from "react-native-gesture-handler";
 import * as Haptics from "expo-haptics";
+import {
+  AudioModule,
+  RecordingPresets,
+  setAudioModeAsync,
+  useAudioRecorder,
+} from "expo-audio";
 import {
   useGetActionQueue,
   useUpdateAction,
   useDeleteAction,
-  useSnoozeAction,
   getGetActionQueueUrl,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useApiKey } from "@/components/AuthContext";
+import { getApiBasePath, resolveDefaultApiOrigin } from "@/constants/api";
 
 const COLORS = {
   bg: "#fdfbf7",
@@ -29,10 +28,10 @@ const COLORS = {
   card: "#ffffff",
   accent: "#c8553d",
   green: "#5d7a4a",
-  blue: "#3a6b8a",
-  amber: "#b8862c",
   red: "#c0392b",
 };
+
+const SERVER_STORAGE_KEY = "clarity_api_server_url";
 
 type Action = {
   id: number;
@@ -61,14 +60,21 @@ const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
   other: { bg: "#f3f4f6", text: "#374151" },
 };
 
+async function resolveApiBase(): Promise<string> {
+  const stored = await AsyncStorage.getItem(SERVER_STORAGE_KEY);
+  const origin = stored || resolveDefaultApiOrigin();
+  return getApiBasePath(origin);
+}
+
 export function TaskListScreen() {
+  const apiKey = useApiKey();
   const queryClient = useQueryClient();
   const queueUrl = getGetActionQueueUrl();
   const { data, refetch, isLoading } = useGetActionQueue();
   const updateAction = useUpdateAction();
   const deleteAction = useDeleteAction();
-  const snoozeAction = useSnoozeAction();
-  const [refreshing, setRefreshing] = useState(false);
+  const [refiningId, setRefiningId] = useState<number | null>(null);
+  const [isRefining, setIsRefining] = useState(false);
 
   const invalidateQueue = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: [queueUrl] });
@@ -109,52 +115,87 @@ export function TaskListScreen() {
     [updateAction, invalidateQueue],
   );
 
-  const doSnooze = useCallback(
-    async (id: number, days: number) => {
-      await snoozeAction.mutateAsync({ id, data: { days } });
-      invalidateQueue();
-    },
-    [snoozeAction, invalidateQueue],
-  );
-
-  const handleSnooze = useCallback(
-    (id: number) => {
-      Alert.alert("Snooze for…", undefined, [
-        { text: "1 day", onPress: () => doSnooze(id, 1) },
-        { text: "1 week", onPress: () => doSnooze(id, 7) },
-        { text: "Cancel", style: "cancel" },
-      ]);
-    },
-    [doSnooze],
-  );
-
   const handleDelete = useCallback(
-    (id: number) => {
-      Alert.alert("Delete this task?", undefined, [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            await deleteAction.mutateAsync({ id });
-            invalidateQueue();
-          },
-        },
-      ]);
+    async (id: number) => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      await deleteAction.mutateAsync({ id });
+      invalidateQueue();
     },
     [deleteAction, invalidateQueue],
   );
 
-  const handleEmail = useCallback((title: string) => {
-    const body = encodeURIComponent(title);
-    Linking.openURL(`mailto:?body=${body}`).catch(() => {});
-  }, []);
+  const stopAndRefine = useCallback(
+    async (id: number) => {
+      try {
+        await recorder.stop();
+        setRefiningId(null);
+        const uri = recorder.uri;
+        if (!uri) return;
 
-  const handleText = useCallback((title: string) => {
-    const body = encodeURIComponent(title);
-    const url = Platform.OS === "ios" ? `sms:&body=${body}` : `sms:?body=${body}`;
-    Linking.openURL(url).catch(() => {});
-  }, []);
+        setIsRefining(true);
+        const form = new FormData();
+        const ext = uri.split(".").pop() || "m4a";
+        const mime = ext === "m4a" ? "audio/m4a" : `audio/${ext}`;
+        // @ts-ignore
+        form.append("audio", { uri, name: `audio.${ext}`, type: mime });
+
+        const apiBase = await resolveApiBase();
+        const res = await fetch(`${apiBase}/actions/${id}/refine`, {
+          method: "POST",
+          body: form,
+          headers: { Authorization: `Bearer ${apiKey}` },
+        });
+        if (!res.ok) {
+          let detail = "Couldn't refine that";
+          try {
+            const body = (await res.json()) as { error?: string };
+            if (body.error) detail = body.error;
+          } catch {
+            detail = `Server returned ${res.status}`;
+          }
+          Alert.alert("Refine failed", detail);
+          return;
+        }
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        invalidateQueue();
+      } catch {
+        Alert.alert("Refine failed", "Please try speaking again.");
+      } finally {
+        setIsRefining(false);
+      }
+    },
+    [apiKey, invalidateQueue, recorder],
+  );
+
+  const handleRefine = useCallback(
+    async (id: number) => {
+      if (isRefining) return;
+      if (refiningId === id) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+        await stopAndRefine(id);
+        return;
+      }
+
+      try {
+        const status = await AudioModule.requestRecordingPermissionsAsync();
+        if (!status.granted) {
+          Alert.alert("Mic unavailable", "Please grant microphone permission in Settings.");
+          return;
+        }
+        await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+        if (refiningId != null) {
+          await recorder.stop().catch(() => {});
+        }
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        await recorder.prepareToRecordAsync();
+        recorder.record();
+        setRefiningId(id);
+      } catch {
+        Alert.alert("Mic unavailable", "Please grant microphone permission in Settings.");
+      }
+    },
+    [isRefining, recorder, refiningId, stopAndRefine],
+  );
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
@@ -163,7 +204,7 @@ export function TaskListScreen() {
         <Text style={styles.sub}>
           {queue.length === 0
             ? "Speak on the home tab to add tasks"
-            : `${queue.length} ${queue.length === 1 ? "task" : "tasks"} in your queue`}
+            : "Swipe right to finish · swipe left to delete"}
         </Text>
       </View>
       <SectionList
@@ -189,50 +230,72 @@ export function TaskListScreen() {
         renderItem={({ item }) => {
           const category = item.category ?? "other";
           const chip = CATEGORY_COLORS[category] ?? CATEGORY_COLORS.other;
+          const listening = refiningId === item.id;
           return (
-            <View style={styles.card}>
-              <View style={styles.cardHeader}>
-                <Text style={styles.cardTitle} numberOfLines={4}>
-                  {item.title}
-                </Text>
-                <View style={[styles.chip, { backgroundColor: chip.bg }]}>
-                  <Text style={[styles.chipText, { color: chip.text }]}>
-                    {CATEGORY_LABELS[category] ?? category}
-                  </Text>
+            <View style={styles.swipeWrap}>
+              <Swipeable
+                friction={2}
+                leftThreshold={64}
+                rightThreshold={64}
+                overshootLeft={false}
+                overshootRight={false}
+                onSwipeableLeftOpen={() => {
+                  void handleComplete(item.id);
+                }}
+                onSwipeableRightOpen={() => {
+                  void handleDelete(item.id);
+                }}
+                renderLeftActions={() => (
+                  <View style={[styles.swipeFill, styles.swipeDone]}>
+                    <Text style={styles.swipeLabel}>Done</Text>
+                  </View>
+                )}
+                renderRightActions={() => (
+                  <View style={[styles.swipeFill, styles.swipeDelete]}>
+                    <Text style={styles.swipeLabel}>Delete</Text>
+                  </View>
+                )}
+              >
+                <View style={styles.card}>
+                  <View style={styles.cardHeader}>
+                    <Text style={styles.cardTitle} numberOfLines={4}>
+                      {item.title}
+                    </Text>
+                    <View style={[styles.chip, { backgroundColor: chip.bg }]}>
+                      <Text style={[styles.chipText, { color: chip.text }]}>
+                        {CATEGORY_LABELS[category] ?? category}
+                      </Text>
+                    </View>
+                  </View>
+                  {(item.nextSteps ?? []).map((step) => (
+                    <Text key={step} style={styles.nextStep}>
+                      {`• ${step}`}
+                    </Text>
+                  ))}
+                  <Pressable
+                    onPress={() => void handleRefine(item.id)}
+                    disabled={isRefining && !listening}
+                    style={({ pressed }) => [
+                      styles.refineBtn,
+                      listening && styles.refineBtnActive,
+                      pressed && { opacity: 0.85 },
+                    ]}
+                  >
+                    <Text style={[styles.refineText, listening && styles.refineTextActive]}>
+                      {isRefining && listening
+                        ? "Refining…"
+                        : listening
+                          ? "Tap to stop"
+                          : "Refine"}
+                    </Text>
+                  </Pressable>
                 </View>
-              </View>
-              {(item.nextSteps ?? []).map((step) => (
-                <Text key={step} style={styles.nextStep}>
-                  {`• ${step}`}
-                </Text>
-              ))}
-              <View style={styles.row}>
-                <ActionBtn label="Done" tint={COLORS.green} onPress={() => handleComplete(item.id)} />
-                <ActionBtn label="Email" tint={COLORS.blue} onPress={() => handleEmail(item.title)} />
-                <ActionBtn label="Text" tint={COLORS.accent} onPress={() => handleText(item.title)} />
-                <ActionBtn label="Snooze" tint={COLORS.amber} onPress={() => handleSnooze(item.id)} />
-                <ActionBtn label="Delete" tint={COLORS.red} onPress={() => handleDelete(item.id)} />
-              </View>
+              </Swipeable>
             </View>
           );
         }}
       />
     </SafeAreaView>
-  );
-}
-
-function ActionBtn({ label, tint, onPress }: { label: string; tint: string; onPress: () => void }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.btn,
-        { borderColor: tint + "33" },
-        pressed && { backgroundColor: tint + "14" },
-      ]}
-    >
-      <Text style={[styles.btnText, { color: tint }]}>{label}</Text>
-    </Pressable>
   );
 }
 
@@ -242,13 +305,29 @@ const styles = StyleSheet.create({
   title: { fontFamily: "Inter_700Bold", fontSize: 28, color: COLORS.ink },
   sub: { fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.inkDim, marginTop: 4 },
   listContent: { paddingHorizontal: 16, paddingBottom: 32 },
+  swipeWrap: {
+    marginBottom: 10,
+    borderRadius: 16,
+    overflow: "hidden",
+  },
+  swipeFill: {
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
+  swipeDone: { backgroundColor: COLORS.green, alignItems: "flex-start" },
+  swipeDelete: { backgroundColor: COLORS.red, alignItems: "flex-end" },
+  swipeLabel: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 14,
+    color: "#fff",
+  },
   card: {
     backgroundColor: COLORS.card,
-    borderRadius: 16,
     padding: 16,
-    marginBottom: 10,
     borderWidth: 1,
     borderColor: COLORS.hairline,
+    borderRadius: 16,
   },
   cardTitle: {
     fontFamily: "Inter_500Medium",
@@ -277,16 +356,22 @@ const styles = StyleSheet.create({
     marginTop: 8,
     backgroundColor: COLORS.bg,
   },
-  row: { flexDirection: "row", gap: 6, marginTop: 8 },
-  btn: {
-    flex: 1,
-    paddingVertical: 9,
+  refineBtn: {
+    marginTop: 10,
+    alignSelf: "flex-start",
     borderRadius: 10,
     borderWidth: 1,
-    alignItems: "center",
+    borderColor: COLORS.accent + "44",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     backgroundColor: "#fff",
   },
-  btnText: { fontFamily: "Inter_600SemiBold", fontSize: 11 },
+  refineBtnActive: {
+    backgroundColor: COLORS.accent,
+    borderColor: COLORS.accent,
+  },
+  refineText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.accent },
+  refineTextActive: { color: "#fff" },
   empty: { paddingVertical: 60, alignItems: "center", paddingHorizontal: 32 },
   emptyText: {
     fontFamily: "Inter_400Regular",

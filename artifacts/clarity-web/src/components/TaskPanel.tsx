@@ -1,5 +1,4 @@
-import { Check, Mail, MessageSquare, Moon, Trash2 } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { SwipeTask } from "@/components/SwipeTask";
 
 export type TaskItem = {
   id: number;
@@ -34,10 +33,10 @@ type TaskPanelProps = {
   tasks: TaskItem[];
   isLoading?: boolean;
   onComplete: (id: number) => void;
-  onSnooze: (id: number, days: number) => void;
   onDelete: (id: number) => void;
-  onEmail: (title: string) => void;
-  onText: (title: string) => void;
+  onRefine: (id: number) => void;
+  refiningId?: number | null;
+  isRefining?: boolean;
   compact?: boolean;
 };
 
@@ -53,10 +52,10 @@ export function TaskPanel({
   tasks,
   isLoading,
   onComplete,
-  onSnooze,
   onDelete,
-  onEmail,
-  onText,
+  onRefine,
+  refiningId = null,
+  isRefining = false,
   compact = false,
 }: TaskPanelProps) {
   if (isLoading) {
@@ -90,6 +89,9 @@ export function TaskPanel({
 
   return (
     <div className={`space-y-4 ${compact ? "max-h-[40vh] overflow-y-auto pr-1" : ""}`}>
+      <p className="px-1 text-[11px] text-[#7a716b]">
+        Swipe right to finish · swipe left to delete
+      </p>
       {grouped.map((group) => {
         const chip = CATEGORY_COLORS[group.category] ?? CATEGORY_COLORS.other;
         return (
@@ -98,99 +100,51 @@ export function TaskPanel({
               {CATEGORY_LABELS[group.category] ?? group.category}
             </p>
             <ul className="space-y-2">
-              {group.items.map((a) => (
-                <li key={a.id} className="rounded-2xl border border-[#ebe5dd] bg-white p-4">
-                  <div className="mb-3 flex items-start justify-between gap-3">
-                    <p className="text-[15px] leading-snug font-medium">{a.title}</p>
-                    <span
-                      className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
-                      style={{ backgroundColor: chip.bg, color: chip.text }}
-                    >
-                      {CATEGORY_LABELS[group.category] ?? group.category}
-                    </span>
-                  </div>
-                  {(a.nextSteps ?? []).length > 0 && (
-                    <ol className="mb-3 ml-4 list-decimal space-y-1">
-                      {(a.nextSteps ?? []).map((step) => (
-                        <li key={step} className="text-xs text-[#7a716b] leading-snug">
-                          {step}
-                        </li>
-                      ))}
-                    </ol>
-                  )}
-                  <div className="grid grid-cols-5 gap-2">
-                    <PillBtn icon={<Check className="h-4 w-4" />} label="Done" tint="#5d7a4a" onClick={() => onComplete(a.id)} />
-                    <PillBtn icon={<Mail className="h-4 w-4" />} label="Email" tint="#3a6b8a" onClick={() => onEmail(a.title)} />
-                    <PillBtn icon={<MessageSquare className="h-4 w-4" />} label="Text" tint="#c8553d" onClick={() => onText(a.title)} />
-                    <Popover>
-                      <PopoverTrigger asChild>
+              {group.items.map((a) => {
+                const listening = refiningId === a.id;
+                return (
+                  <li key={a.id}>
+                    <SwipeTask onDone={() => onComplete(a.id)} onDelete={() => onDelete(a.id)}>
+                      <div className="rounded-2xl border border-[#ebe5dd] bg-white p-4">
+                        <div className="mb-3 flex items-start justify-between gap-3">
+                          <p className="text-[15px] leading-snug font-medium">{a.title}</p>
+                          <span
+                            className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+                            style={{ backgroundColor: chip.bg, color: chip.text }}
+                          >
+                            {CATEGORY_LABELS[group.category] ?? group.category}
+                          </span>
+                        </div>
+                        {(a.nextSteps ?? []).length > 0 && (
+                          <ol className="mb-3 ml-4 list-decimal space-y-1">
+                            {(a.nextSteps ?? []).map((step) => (
+                              <li key={step} className="text-xs text-[#7a716b] leading-snug">
+                                {step}
+                              </li>
+                            ))}
+                          </ol>
+                        )}
                         <button
-                          className="flex items-center justify-center gap-1.5 rounded-lg border bg-white py-2 text-xs font-semibold transition-colors hover:bg-[#b8862c10] active:scale-95"
-                          style={{ color: "#b8862c", borderColor: "#b8862c33" }}
+                          type="button"
+                          disabled={isRefining && !listening}
+                          onClick={() => onRefine(a.id)}
+                          className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
+                            listening
+                              ? "border-[#c8553d] bg-[#c8553d] text-white"
+                              : "border-[#c8553d44] bg-white text-[#c8553d]"
+                          }`}
                         >
-                          <Moon className="h-4 w-4" />
-                          Snooze
+                          {isRefining && listening ? "Refining…" : listening ? "Tap to stop" : "Refine"}
                         </button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-36 p-1" align="end">
-                        <button
-                          onClick={() => onSnooze(a.id, 1)}
-                          className="w-full text-left rounded-md px-3 py-2 text-sm font-medium hover:bg-[#fbeae5]"
-                        >
-                          1 day
-                        </button>
-                        <button
-                          onClick={() => onSnooze(a.id, 7)}
-                          className="w-full text-left rounded-md px-3 py-2 text-sm font-medium hover:bg-[#fbeae5]"
-                        >
-                          1 week
-                        </button>
-                      </PopoverContent>
-                    </Popover>
-                    <button
-                      onClick={() => onDelete(a.id)}
-                      aria-label="Delete"
-                      className="flex items-center justify-center gap-1.5 rounded-lg border bg-white py-2 text-xs font-semibold text-[#c0392b] border-[#c0392b33] transition-colors hover:bg-[#c0392b10] active:scale-95"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      Delete
-                    </button>
-                  </div>
-                </li>
-              ))}
+                      </div>
+                    </SwipeTask>
+                  </li>
+                );
+              })}
             </ul>
           </section>
         );
       })}
     </div>
-  );
-}
-
-function PillBtn({
-  icon,
-  label,
-  tint,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  tint: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="flex items-center justify-center gap-1.5 rounded-lg border bg-white py-2 text-xs font-semibold transition-colors hover:bg-[var(--tint-bg)] active:scale-95"
-      style={
-        {
-          color: tint,
-          borderColor: `${tint}33`,
-          ["--tint-bg" as string]: `${tint}10`,
-        } as React.CSSProperties
-      }
-    >
-      {icon}
-      {label}
-    </button>
   );
 }

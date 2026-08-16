@@ -8,9 +8,6 @@ export function AccountBar({ onLogout }: { onLogout: () => void }) {
           <Link href="/" className="text-[#1a1715] hover:text-[#c8553d]">
             Tasks
           </Link>
-          <Link href="/follow-ups" className="text-[#7a716b] hover:text-[#c8553d]">
-            Follow-ups
-          </Link>
         </nav>
         <button
           type="button"

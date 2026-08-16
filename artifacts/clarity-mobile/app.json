@@ -16,11 +16,14 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.skyspeak.lockin",
-      "buildNumber": "4",
+      "buildNumber": "6",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Clarity uses the microphone so you can dictate thoughts hands-free.",
         "NSCameraUsageDescription": "Clarity uses the camera to attach photos to thoughts.",
-        "LSApplicationQueriesSchemes": ["itms-beta", "itms-apps"],
+        "LSApplicationQueriesSchemes": [
+          "itms-beta",
+          "itms-apps"
+        ],
         "UIBackgroundModes": []
       },
       "config": {
