@@ -1,7 +1,6 @@
 import { Router } from "express";
 import { transcribeAudio } from "@workspace/integrations";
 import {
-  ALLOWED_AUDIO_MIME,
   audioLimiter,
   audioUpload,
   safeAudioFilename,
@@ -17,12 +16,8 @@ router.post("/", audioUpload.single("audio"), async (req, res) => {
   }
 
   const sniffed = sniffAudioMime(req.file.buffer);
-  const claimed = (req.file.mimetype || "").toLowerCase();
   if (!sniffed) {
     return res.status(415).json({ error: "Unsupported audio type" });
-  }
-  if (claimed && !ALLOWED_AUDIO_MIME.has(claimed)) {
-    return res.status(415).json({ error: `Unsupported audio type: ${req.file.mimetype}` });
   }
 
   try {

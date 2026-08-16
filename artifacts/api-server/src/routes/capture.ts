@@ -4,7 +4,6 @@ import { transcribeAudio, extractActionsFromThought } from "@workspace/integrati
 import { CaptureThoughtResponse } from "@workspace/api-zod";
 import { seedFollowUpPlanFromExtract } from "../services/followUpPlan";
 import {
-  ALLOWED_AUDIO_MIME,
   audioLimiter,
   audioUpload,
   safeAudioFilename,
@@ -19,13 +18,15 @@ router.post("/", audioUpload.single("audio"), async (req, res) => {
     return res.status(400).json({ error: "Missing audio file (field name: 'audio')" });
   }
 
+  if (req.file.buffer.length < 8) {
+    return res.status(400).json({ error: "Recording too short. Hold the mic and speak a bit longer." });
+  }
+
   const sniffed = sniffAudioMime(req.file.buffer);
   const claimed = (req.file.mimetype || "").toLowerCase();
   if (!sniffed) {
+    req.log.warn({ claimed, bytes: req.file.buffer.length }, "capture rejected unknown audio");
     return res.status(415).json({ error: "Unsupported audio type" });
-  }
-  if (claimed && !ALLOWED_AUDIO_MIME.has(claimed)) {
-    return res.status(415).json({ error: `Unsupported audio type: ${req.file.mimetype}` });
   }
 
   const filename = safeAudioFilename(req.file.originalname);

@@ -12,7 +12,9 @@ export function SetupScreen({ onSetup }: SetupScreenProps) {
   const [value, setValue] = useState("");
   const [error, setError] = useState("");
 
-  const handleSubmit = () => {
+  const [busy, setBusy] = useState(false);
+
+  const handleSubmit = async () => {
     const trimmedKey = value.trim();
     const trimmedServer = normalizeApiOrigin(serverUrl);
     if (!trimmedServer) {
@@ -23,7 +25,26 @@ export function SetupScreen({ onSetup }: SetupScreenProps) {
       setError("API key is required");
       return;
     }
-    onSetup(trimmedServer, trimmedKey);
+
+    setBusy(true);
+    try {
+      const res = await fetch(`${trimmedServer}/api/actions/queue`, {
+        headers: { Authorization: `Bearer ${trimmedKey}` },
+      });
+      if (res.status === 401) {
+        setError("API key does not match this server");
+        return;
+      }
+      if (!res.ok) {
+        setError(`Server returned ${res.status}. Check the API URL.`);
+        return;
+      }
+      onSetup(trimmedServer, trimmedKey);
+    } catch {
+      setError("Could not reach the API. Check the URL and your network.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -66,8 +87,12 @@ export function SetupScreen({ onSetup }: SetupScreenProps) {
         />
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        <Pressable style={styles.button} onPress={handleSubmit}>
-          <Text style={styles.buttonText}>Unlock</Text>
+        <Pressable
+          style={[styles.button, busy ? styles.buttonDisabled : null]}
+          onPress={handleSubmit}
+          disabled={busy}
+        >
+          <Text style={styles.buttonText}>{busy ? "Checking…" : "Unlock"}</Text>
         </Pressable>
       </View>
     </SafeAreaView>
@@ -129,6 +154,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: "center",
     marginTop: 8,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   buttonText: {
     color: "#ffffff",

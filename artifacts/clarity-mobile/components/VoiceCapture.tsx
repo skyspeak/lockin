@@ -92,7 +92,31 @@ export function useVoiceCapture() {
         body: form,
         headers: { Authorization: `Bearer ${apiKey}` },
       });
-      if (!res.ok) throw new Error("capture failed");
+      if (!res.ok) {
+        let detail = "";
+        try {
+          const body = (await res.json()) as { error?: string };
+          detail = body.error ?? "";
+        } catch {
+          detail = "";
+        }
+        if (res.status === 401) {
+          Alert.alert(
+            "API key rejected",
+            "The key does not match API_SECRET on the Railway API service.",
+          );
+          return;
+        }
+        if (res.status === 415 || /unsupported audio/i.test(detail)) {
+          Alert.alert("Couldn't read that recording", "Try speaking again for a couple of seconds.");
+          return;
+        }
+        Alert.alert(
+          "Couldn't turn that into tasks",
+          detail || `Server returned ${res.status}. Check GEMINI_API_KEY on Railway.`,
+        );
+        return;
+      }
       const json = (await res.json()) as { actions?: { title: string; nextSteps?: string[] }[] };
       const items = (json.actions ?? [])
         .map((a) => ({ title: a.title, nextSteps: a.nextSteps ?? [] }))
