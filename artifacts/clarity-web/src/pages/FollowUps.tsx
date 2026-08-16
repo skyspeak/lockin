@@ -47,7 +47,7 @@ export default function FollowUps() {
             href="/"
             className="text-sm font-semibold text-[#c8553d] hover:text-[#a8412e] shrink-0 pt-1"
           >
-            Queue
+            Speak
           </Link>
         </header>
 

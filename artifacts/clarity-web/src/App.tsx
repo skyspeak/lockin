@@ -7,6 +7,7 @@ import Home from "@/pages/Home";
 import FollowUps from "@/pages/FollowUps";
 import FollowUpDetail from "@/pages/FollowUpDetail";
 import Login from "@/pages/Login";
+import { AccountBar } from "@/components/AccountBar";
 import { ApiKeyContext } from "@/lib/auth-context";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,12 @@ export default function App() {
     setApiKey(key);
   }, []);
 
+  const handleLogout = useCallback(() => {
+    sessionStorage.removeItem(STORAGE_KEY);
+    setAuthTokenGetter(null);
+    setApiKey("");
+  }, []);
+
   if (!apiKey) {
     return <Login onLogin={handleLogin} />;
   }
@@ -37,6 +44,7 @@ export default function App() {
   return (
     <ApiKeyContext.Provider value={apiKey}>
       <QueryClientProvider client={queryClient}>
+        <AccountBar onLogout={handleLogout} />
         <Switch>
           <Route path="/follow-ups/:id" component={FollowUpDetail} />
           <Route path="/follow-ups" component={FollowUps} />

@@ -10,13 +10,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { setBaseUrl, setAuthTokenGetter } from "@workspace/api-client-react";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { SetupScreen } from "@/components/SetupScreen";
-import { ApiKeyContext } from "@/components/AuthContext";
+import { ApiKeyContext, SessionContext } from "@/components/AuthContext";
 import { normalizeApiOrigin, resolveDefaultApiOrigin } from "@/constants/api";
 
 SplashScreen.preventAutoHideAsync();
@@ -89,19 +89,27 @@ export default function RootLayout() {
     );
   }
 
+  const logout = useCallback(() => {
+    AsyncStorage.multiRemove([STORAGE_KEY, SERVER_STORAGE_KEY]).catch(() => {});
+    setAuthTokenGetter(null);
+    setApiKey("");
+  }, []);
+
   return (
-    <ApiKeyContext.Provider value={apiKey}>
-      <SafeAreaProvider>
-        <ErrorBoundary>
-          <QueryClientProvider client={queryClient}>
-            <GestureHandlerRootView style={{ flex: 1 }}>
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="(tabs)" />
-              </Stack>
-            </GestureHandlerRootView>
-          </QueryClientProvider>
-        </ErrorBoundary>
-      </SafeAreaProvider>
-    </ApiKeyContext.Provider>
+    <SessionContext.Provider value={{ logout }}>
+      <ApiKeyContext.Provider value={apiKey}>
+        <SafeAreaProvider>
+          <ErrorBoundary>
+            <QueryClientProvider client={queryClient}>
+              <GestureHandlerRootView style={{ flex: 1 }}>
+                <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Screen name="(tabs)" />
+                </Stack>
+              </GestureHandlerRootView>
+            </QueryClientProvider>
+          </ErrorBoundary>
+        </SafeAreaProvider>
+      </ApiKeyContext.Provider>
+    </SessionContext.Provider>
   );
 }

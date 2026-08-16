@@ -7,15 +7,35 @@ interface LoginProps {
 export default function Login({ onLogin }: LoginProps) {
   const [value, setValue] = useState("");
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = value.trim();
     if (!trimmed) {
       setError("API key is required");
       return;
     }
-    onLogin(trimmed);
+
+    setBusy(true);
+    try {
+      const res = await fetch("/api/actions/queue", {
+        headers: { Authorization: `Bearer ${trimmed}` },
+      });
+      if (res.status === 401) {
+        setError("API key does not match this server");
+        return;
+      }
+      if (!res.ok) {
+        setError(`Server returned ${res.status}`);
+        return;
+      }
+      onLogin(trimmed);
+    } catch {
+      setError("Could not reach the API.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -45,9 +65,10 @@ export default function Login({ onLogin }: LoginProps) {
           {error && <p className="text-xs text-red-500">{error}</p>}
           <button
             type="submit"
-            className="w-full rounded-xl bg-[#c8553d] py-3 text-sm font-semibold text-white hover:bg-[#b34a35] transition-colors"
+            disabled={busy}
+            className="w-full rounded-xl bg-[#c8553d] py-3 text-sm font-semibold text-white hover:bg-[#b34a35] transition-colors disabled:opacity-60"
           >
-            Unlock
+            {busy ? "Checking…" : "Unlock"}
           </button>
         </form>
       </div>

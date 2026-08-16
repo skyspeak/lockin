@@ -1,9 +1,19 @@
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
+import fs from "node:fs";
+import path from "node:path";
 import pinoHttp from "pino-http";
 import rateLimit from "express-rate-limit";
 import router from "./routes";
 import { logger } from "./lib/logger";
+
+function resolveWebRoot(): string | null {
+  const candidates = [
+    path.resolve(process.cwd(), "artifacts/clarity-web/dist/public"),
+    path.resolve(process.cwd(), "dist/public"),
+  ];
+  return candidates.find((dir) => fs.existsSync(path.join(dir, "index.html"))) ?? null;
+}
 
 const app: Express = express();
 const isProduction = process.env.NODE_ENV === "production";
@@ -68,6 +78,19 @@ const apiLimiter = rateLimit({
 app.use("/api", apiLimiter);
 
 app.use("/api", router);
+
+const webRoot = resolveWebRoot();
+if (webRoot) {
+  logger.info({ webRoot }, "Serving Clarity web UI");
+  app.use(express.static(webRoot, { index: false, fallthrough: true }));
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.method !== "GET" && req.method !== "HEAD") return next();
+    if (req.path.startsWith("/api")) return next();
+    res.sendFile(path.join(webRoot, "index.html"), (err) => {
+      if (err) next(err);
+    });
+  });
+}
 
 app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
   const message = err instanceof Error ? err.message : "Request failed";

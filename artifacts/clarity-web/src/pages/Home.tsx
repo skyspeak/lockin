@@ -7,8 +7,7 @@ import {
   useSnoozeAction,
   getGetActionQueueUrl,
 } from "@workspace/api-client-react";
-import { ChevronUp, ListChecks } from "lucide-react";
-import { Link } from "wouter";
+import { ChevronUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useApiKey } from "@/lib/auth-context";
 import { VoiceCaptureButton } from "@/components/VoiceCaptureButton";
@@ -26,7 +25,7 @@ export default function Home() {
 
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
-  const [tasksOpen, setTasksOpen] = useState(false);
+  const [tasksOpen, setTasksOpen] = useState(true);
   const [lastCaptured, setLastCaptured] = useState<{ title: string; nextSteps: string[] }[]>([]);
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
@@ -139,13 +138,6 @@ export default function Home() {
       {/* Voice-first hero — default focus */}
       <section className="flex-1 flex flex-col items-center justify-center px-6 pt-10 pb-6 min-h-[55vh]">
         <header className="w-full max-w-xl mb-10 text-center relative">
-          <Link
-            href="/follow-ups"
-            className="absolute right-0 top-0 inline-flex items-center gap-1.5 text-sm font-semibold text-[#c8553d] hover:text-[#a8412e]"
-          >
-            <ListChecks className="h-4 w-4" />
-            Follow-ups
-          </Link>
           <p className="text-xs font-semibold uppercase tracking-widest text-[#c8553d] mb-2">
             Voice first
           </p>

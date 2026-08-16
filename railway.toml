@@ -1,6 +1,6 @@
 [build]
 builder = "RAILPACK"
-buildCommand = "pnpm --filter @workspace/api-server run build"
+buildCommand = "pnpm --filter @workspace/clarity-web run build && pnpm --filter @workspace/api-server run build"
 
 [deploy]
 startCommand = "node --enable-source-maps artifacts/api-server/dist/index.mjs"
