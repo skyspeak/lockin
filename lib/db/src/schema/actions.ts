@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, pgEnum, integer } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, pgEnum, integer, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { categoryEnum } from "./thoughts";
@@ -21,6 +21,7 @@ export const actionsTable = pgTable("actions", {
   status: actionStatusEnum("status").notNull().default("pending"),
   priority: priorityEnum("priority").notNull().default("medium"),
   thoughtId: integer("thought_id"),
+  nextSteps: jsonb("next_steps").$type<string[]>().notNull().default([]),
   snoozedUntil: timestamp("snoozed_until"),
   completedAt: timestamp("completed_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

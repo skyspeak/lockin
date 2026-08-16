@@ -45,7 +45,7 @@ export function useVoiceCapture() {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
-  const [lastCaptured, setLastCaptured] = useState<string[]>([]);
+  const [lastCaptured, setLastCaptured] = useState<{ title: string; nextSteps: string[] }[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -93,14 +93,16 @@ export function useVoiceCapture() {
         headers: { Authorization: `Bearer ${apiKey}` },
       });
       if (!res.ok) throw new Error("capture failed");
-      const json = (await res.json()) as { actions?: { title: string }[] };
-      const titles = (json.actions ?? []).map((a) => a.title).filter(Boolean);
-      if (titles.length === 0) {
+      const json = (await res.json()) as { actions?: { title: string; nextSteps?: string[] }[] };
+      const items = (json.actions ?? [])
+        .map((a) => ({ title: a.title, nextSteps: a.nextSteps ?? [] }))
+        .filter((a) => a.title);
+      if (items.length === 0) {
         Alert.alert("Nothing captured", "Try speaking again.");
         return;
       }
 
-      setLastCaptured(titles);
+      setLastCaptured(items);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       invalidateQueue();
     } catch {
@@ -123,7 +125,7 @@ export function useVoiceCapture() {
 type VoiceCaptureHeroProps = {
   isRecording: boolean;
   isTranscribing: boolean;
-  lastCaptured: string[];
+  lastCaptured: { title: string; nextSteps: string[] }[];
   onMicPress: () => void;
 };
 
@@ -157,7 +159,7 @@ export function VoiceCaptureHero({
     <View style={styles.hero}>
       <Text style={styles.kicker}>VOICE FIRST</Text>
       <Text style={styles.brand}>Clarity</Text>
-      <Text style={styles.sub}>Speak a thought. I'll turn it into tasks.</Text>
+      <Text style={styles.sub}>Speak a thought. I'll turn it into tasks and next steps.</Text>
 
       <View style={styles.micWrap}>
         {isRecording && (
@@ -181,17 +183,22 @@ export function VoiceCaptureHero({
           )}
         </Pressable>
         <Text style={styles.micLabel}>
-          {isTranscribing ? "Turning that into tasks…" : isRecording ? "Tap to stop" : "Tap to speak"}
+          {isTranscribing ? "Turning that into tasks and next steps…" : isRecording ? "Tap to stop" : "Tap to speak"}
         </Text>
       </View>
 
       {lastCaptured.length > 0 && !isRecording && !isTranscribing ? (
         <View style={styles.captured}>
           <Text style={styles.capturedLabel}>JUST ADDED</Text>
-          {lastCaptured.map((title, index) => (
-            <Text key={`${index}-${title}`} style={styles.capturedText}>
-              {title}
-            </Text>
+          {lastCaptured.map((item, index) => (
+            <View key={`${index}-${item.title}`} style={styles.capturedItem}>
+              <Text style={styles.capturedText}>{item.title}</Text>
+              {item.nextSteps.map((step) => (
+                <Text key={step} style={styles.capturedStep}>
+                  {`• ${step}`}
+                </Text>
+              ))}
+            </View>
           ))}
         </View>
       ) : null}
@@ -279,6 +286,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: COLORS.ink,
     lineHeight: 22,
-    marginTop: 4,
+  },
+  capturedItem: { marginTop: 10 },
+  capturedStep: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: COLORS.inkDim,
+    lineHeight: 18,
+    marginTop: 3,
   },
 });

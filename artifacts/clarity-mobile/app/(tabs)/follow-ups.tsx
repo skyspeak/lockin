@@ -48,7 +48,7 @@ export default function FollowUpsTab() {
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
       <View style={styles.header}>
         <Text style={styles.title}>Follow-ups</Text>
-        <Text style={styles.sub}>Action plans from your spoken tasks</Text>
+        <Text style={styles.sub}>Next steps generated from what you said</Text>
       </View>
       <FlatList
         data={plans}
@@ -65,7 +65,7 @@ export default function FollowUpsTab() {
           !isLoading ? (
             <View style={styles.empty}>
               <Text style={styles.emptyText}>
-                Capture a task by voice and a follow-up plan will appear here.
+                Capture a task by voice and next steps will appear here.
               </Text>
             </View>
           ) : null

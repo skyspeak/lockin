@@ -35,7 +35,7 @@ paths:
     post:
       operationId: captureThought
       tags: [capture]
-      summary: Transcribe a voice note and extract classified action items
+      summary: Transcribe a voice note, extract classified actions, and attach next steps
       security:
         - bearerAuth: []
       requestBody:
@@ -52,7 +52,7 @@ paths:
                   description: Recorded voice note
       responses:
         "200":
-          description: Transcript and extracted actions
+          description: Transcript, extracted actions, and next steps
           content:
             application/json:
               schema:
@@ -476,6 +476,12 @@ components:
         thoughtId:
           type: integer
           nullable: true
+        nextSteps:
+          type: array
+          items:
+            type: string
+            maxLength: 200
+          maxItems: 4
         snoozedUntil:
           type: string
           format: date-time
@@ -490,7 +496,7 @@ components:
         updatedAt:
           type: string
           format: date-time
-      required: [id, userId, title, category, status, priority, createdAt, updatedAt]
+      required: [id, userId, title, category, status, priority, nextSteps, createdAt, updatedAt]
 
     CaptureResult:
       type: object

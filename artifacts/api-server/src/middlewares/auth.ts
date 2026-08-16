@@ -1,11 +1,13 @@
 import type { Request, Response, NextFunction } from "express";
-import { createHash } from "crypto";
+import { createHash, timingSafeEqual } from "crypto";
 
-const API_SECRET = process.env.API_SECRET;
+const rawSecret = process.env.API_SECRET;
 
-if (!API_SECRET) {
-  throw new Error("API_SECRET environment variable must be set.");
+if (!rawSecret || rawSecret.length < 32) {
+  throw new Error("API_SECRET must be set and at least 32 characters.");
 }
+
+const API_SECRET = rawSecret;
 
 export const DERIVED_USER_ID = createHash("sha256").update(API_SECRET).digest("hex");
 
@@ -15,6 +17,16 @@ declare global {
       userId: string;
     }
   }
+}
+
+function secretsEqual(provided: string, expected: string): boolean {
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) {
+    timingSafeEqual(b, b);
+    return false;
+  }
+  return timingSafeEqual(a, b);
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
@@ -27,7 +39,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
 
   const token = authHeader.slice(7);
 
-  if (token !== API_SECRET) {
+  if (!secretsEqual(token, API_SECRET)) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }

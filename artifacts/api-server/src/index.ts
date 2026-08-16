@@ -72,6 +72,9 @@ async function migrateSchema(): Promise<void> {
   }
 
   if (await tableExists("actions")) {
+    await pool.query(
+      "ALTER TABLE actions ADD COLUMN IF NOT EXISTS next_steps JSONB NOT NULL DEFAULT '[]'::jsonb",
+    );
     const actions = await pool.query(
       "UPDATE actions SET user_id = $1 WHERE user_id = '' RETURNING id",
       [DERIVED_USER_ID],

@@ -15,11 +15,15 @@ export const HealthCheckResponse = zod.object({
 });
 
 /**
- * @summary Transcribe a voice note and extract classified action items
+ * @summary Transcribe a voice note, extract classified actions, and attach next steps
  */
 export const CaptureThoughtBody = zod.object({
   audio: zod.instanceof(File).describe("Recorded voice note"),
 });
+
+export const captureThoughtResponseActionsItemNextStepsItemMax = 200;
+
+export const captureThoughtResponseActionsItemNextStepsMax = 4;
 
 export const CaptureThoughtResponse = zod.object({
   transcript: zod.string(),
@@ -39,6 +43,11 @@ export const CaptureThoughtResponse = zod.object({
       status: zod.enum(["pending", "in-progress", "done", "dismissed"]),
       priority: zod.enum(["low", "medium", "high"]),
       thoughtId: zod.number().nullish(),
+      nextSteps: zod
+        .array(
+          zod.string().max(captureThoughtResponseActionsItemNextStepsItemMax),
+        )
+        .max(captureThoughtResponseActionsItemNextStepsMax),
       snoozedUntil: zod.coerce.date().nullish(),
       completedAt: zod.coerce.date().nullish(),
       createdAt: zod.coerce.date(),
@@ -75,6 +84,10 @@ export const ListActionsQueryParams = zod.object({
     .default(listActionsQueryOffsetDefault),
 });
 
+export const listActionsResponseActionsItemNextStepsItemMax = 200;
+
+export const listActionsResponseActionsItemNextStepsMax = 4;
+
 export const ListActionsResponse = zod.object({
   actions: zod.array(
     zod.object({
@@ -92,6 +105,9 @@ export const ListActionsResponse = zod.object({
       status: zod.enum(["pending", "in-progress", "done", "dismissed"]),
       priority: zod.enum(["low", "medium", "high"]),
       thoughtId: zod.number().nullish(),
+      nextSteps: zod
+        .array(zod.string().max(listActionsResponseActionsItemNextStepsItemMax))
+        .max(listActionsResponseActionsItemNextStepsMax),
       snoozedUntil: zod.coerce.date().nullish(),
       completedAt: zod.coerce.date().nullish(),
       createdAt: zod.coerce.date(),
@@ -120,6 +136,10 @@ export const CreateActionBody = zod.object({
 /**
  * @summary Get the active action queue for the authenticated user
  */
+export const getActionQueueResponseQueueItemNextStepsItemMax = 200;
+
+export const getActionQueueResponseQueueItemNextStepsMax = 4;
+
 export const GetActionQueueResponse = zod.object({
   queue: zod.array(
     zod.object({
@@ -137,6 +157,11 @@ export const GetActionQueueResponse = zod.object({
       status: zod.enum(["pending", "in-progress", "done", "dismissed"]),
       priority: zod.enum(["low", "medium", "high"]),
       thoughtId: zod.number().nullish(),
+      nextSteps: zod
+        .array(
+          zod.string().max(getActionQueueResponseQueueItemNextStepsItemMax),
+        )
+        .max(getActionQueueResponseQueueItemNextStepsMax),
       snoozedUntil: zod.coerce.date().nullish(),
       completedAt: zod.coerce.date().nullish(),
       createdAt: zod.coerce.date(),
@@ -169,6 +194,10 @@ export const UpdateActionBody = zod.object({
   priority: zod.enum(["low", "medium", "high"]).optional(),
 });
 
+export const updateActionResponseNextStepsItemMax = 200;
+
+export const updateActionResponseNextStepsMax = 4;
+
 export const UpdateActionResponse = zod.object({
   id: zod.number(),
   userId: zod.string(),
@@ -184,6 +213,9 @@ export const UpdateActionResponse = zod.object({
   status: zod.enum(["pending", "in-progress", "done", "dismissed"]),
   priority: zod.enum(["low", "medium", "high"]),
   thoughtId: zod.number().nullish(),
+  nextSteps: zod
+    .array(zod.string().max(updateActionResponseNextStepsItemMax))
+    .max(updateActionResponseNextStepsMax),
   snoozedUntil: zod.coerce.date().nullish(),
   completedAt: zod.coerce.date().nullish(),
   createdAt: zod.coerce.date(),
@@ -217,6 +249,10 @@ export const SnoozeActionBody = zod.object({
     .default(snoozeActionBodyDaysDefault),
 });
 
+export const snoozeActionResponseNextStepsItemMax = 200;
+
+export const snoozeActionResponseNextStepsMax = 4;
+
 export const SnoozeActionResponse = zod.object({
   id: zod.number(),
   userId: zod.string(),
@@ -232,6 +268,9 @@ export const SnoozeActionResponse = zod.object({
   status: zod.enum(["pending", "in-progress", "done", "dismissed"]),
   priority: zod.enum(["low", "medium", "high"]),
   thoughtId: zod.number().nullish(),
+  nextSteps: zod
+    .array(zod.string().max(snoozeActionResponseNextStepsItemMax))
+    .max(snoozeActionResponseNextStepsMax),
   snoozedUntil: zod.coerce.date().nullish(),
   completedAt: zod.coerce.date().nullish(),
   createdAt: zod.coerce.date(),

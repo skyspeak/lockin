@@ -119,7 +119,7 @@ export function useHealthCheck<
 }
 
 /**
- * @summary Transcribe a voice note and extract classified action items
+ * @summary Transcribe a voice note, extract classified actions, and attach next steps
  */
 export const getCaptureThoughtUrl = () => {
   return `/api/capture`;
@@ -184,7 +184,7 @@ export type CaptureThoughtMutationBody = BodyType<CaptureThoughtBody>;
 export type CaptureThoughtMutationError = ErrorType<ErrorResponse>;
 
 /**
- * @summary Transcribe a voice note and extract classified action items
+ * @summary Transcribe a voice note, extract classified actions, and attach next steps
  */
 export const useCaptureThought = <
   TError = ErrorType<ErrorResponse>,

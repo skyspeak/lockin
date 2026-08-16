@@ -7,6 +7,7 @@ export type TaskItem = {
   status: string;
   priority: string;
   category?: string;
+  nextSteps?: string[];
   snoozedUntil?: string | null;
   createdAt: string;
 };
@@ -108,6 +109,15 @@ export function TaskPanel({
                       {CATEGORY_LABELS[group.category] ?? group.category}
                     </span>
                   </div>
+                  {(a.nextSteps ?? []).length > 0 && (
+                    <ol className="mb-3 ml-4 list-decimal space-y-1">
+                      {(a.nextSteps ?? []).map((step) => (
+                        <li key={step} className="text-xs text-[#7a716b] leading-snug">
+                          {step}
+                        </li>
+                      ))}
+                    </ol>
+                  )}
                   <div className="grid grid-cols-5 gap-2">
                     <PillBtn icon={<Check className="h-4 w-4" />} label="Done" tint="#5d7a4a" onClick={() => onComplete(a.id)} />
                     <PillBtn icon={<Mail className="h-4 w-4" />} label="Email" tint="#3a6b8a" onClick={() => onEmail(a.title)} />

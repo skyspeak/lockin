@@ -27,7 +27,7 @@ export default function Home() {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [tasksOpen, setTasksOpen] = useState(false);
-  const [lastCaptured, setLastCaptured] = useState<string[]>([]);
+  const [lastCaptured, setLastCaptured] = useState<{ title: string; nextSteps: string[] }[]>([]);
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
 
@@ -56,17 +56,22 @@ export default function Home() {
             headers: { Authorization: `Bearer ${apiKey}` },
           });
           if (!res.ok) throw new Error("capture failed");
-          const json = (await res.json()) as { transcript?: string; actions?: { title: string }[] };
-          const titles = (json.actions ?? []).map((a) => a.title).filter(Boolean);
-          if (titles.length === 0) {
+          const json = (await res.json()) as {
+            transcript?: string;
+            actions?: { title: string; nextSteps?: string[] }[];
+          };
+          const items = (json.actions ?? [])
+            .map((a) => ({ title: a.title, nextSteps: a.nextSteps ?? [] }))
+            .filter((a) => a.title);
+          if (items.length === 0) {
             toast({ title: "Nothing captured", description: "Try speaking again." });
             return;
           }
-          setLastCaptured(titles);
+          setLastCaptured(items);
           invalidate();
           toast({
-            title: titles.length === 1 ? "Task added" : `${titles.length} tasks added`,
-            description: titles.join(" · "),
+            title: items.length === 1 ? "Task added" : `${items.length} tasks added`,
+            description: items.map((item) => item.title).join(" · "),
           });
         } catch {
           toast({ title: "Couldn't turn that into tasks", variant: "destructive" });
@@ -148,7 +153,7 @@ export default function Home() {
             Clarity
           </h1>
           <p className="mt-2 text-[#7a716b] text-sm max-w-sm mx-auto">
-            Speak a thought. I'll turn it into tasks.
+            Speak a thought. I'll turn it into tasks and next steps.
           </p>
         </header>
 
@@ -163,10 +168,19 @@ export default function Home() {
             <p className="text-xs font-semibold uppercase tracking-wide text-[#c8553d] mb-1">
               Just added
             </p>
-            <ul className="space-y-1">
-              {lastCaptured.map((title, index) => (
-                <li key={`${index}-${title}`} className="text-sm text-[#1a1715] leading-snug">
-                  {title}
+            <ul className="space-y-3 text-left">
+              {lastCaptured.map((item, index) => (
+                <li key={`${index}-${item.title}`}>
+                  <p className="text-sm font-medium text-[#1a1715] leading-snug">{item.title}</p>
+                  {item.nextSteps.length > 0 && (
+                    <ol className="mt-1 ml-4 list-decimal space-y-0.5">
+                      {item.nextSteps.map((step) => (
+                        <li key={step} className="text-xs text-[#7a716b] leading-snug">
+                          {step}
+                        </li>
+                      ))}
+                    </ol>
+                  )}
                 </li>
               ))}
             </ul>

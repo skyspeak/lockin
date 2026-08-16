@@ -40,7 +40,7 @@ export default function FollowUps() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Follow-ups</h1>
             <p className="mt-1 text-sm text-[#7a716b]">
-              Action plans generated from your captured tasks
+              Action plans — next steps from what you said
             </p>
           </div>
           <Link

@@ -50,6 +50,8 @@ export interface Action {
   status: ActionStatus;
   priority: Priority;
   thoughtId?: number | null;
+  /** @maxItems 4 */
+  nextSteps: string[];
   snoozedUntil?: string | null;
   completedAt?: string | null;
   createdAt: string;

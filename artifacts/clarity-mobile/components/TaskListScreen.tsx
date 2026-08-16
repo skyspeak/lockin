@@ -40,6 +40,7 @@ type Action = {
   status: string;
   priority: string;
   category?: string;
+  nextSteps?: string[];
 };
 
 const CATEGORY_ORDER = ["work", "family", "hobbies", "extracurriculars", "other"] as const;
@@ -200,6 +201,11 @@ export function TaskListScreen() {
                   </Text>
                 </View>
               </View>
+              {(item.nextSteps ?? []).map((step) => (
+                <Text key={step} style={styles.nextStep}>
+                  {`• ${step}`}
+                </Text>
+              ))}
               <View style={styles.row}>
                 <ActionBtn label="Done" tint={COLORS.green} onPress={() => handleComplete(item.id)} />
                 <ActionBtn label="Email" tint={COLORS.blue} onPress={() => handleEmail(item.title)} />
@@ -251,7 +257,14 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     flex: 1,
   },
-  cardHeader: { flexDirection: "row", alignItems: "flex-start", gap: 8, marginBottom: 12 },
+  cardHeader: { flexDirection: "row", alignItems: "flex-start", gap: 8, marginBottom: 8 },
+  nextStep: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 13,
+    color: COLORS.inkDim,
+    lineHeight: 18,
+    marginBottom: 4,
+  },
   chip: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
   chipText: { fontFamily: "Inter_600SemiBold", fontSize: 10, textTransform: "uppercase" },
   sectionTitle: {
@@ -264,7 +277,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     backgroundColor: COLORS.bg,
   },
-  row: { flexDirection: "row", gap: 6 },
+  row: { flexDirection: "row", gap: 6, marginTop: 8 },
   btn: {
     flex: 1,
     paddingVertical: 9,
