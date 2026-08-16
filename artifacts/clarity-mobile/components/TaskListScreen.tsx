@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { Alert, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { SectionList, Swipeable } from "react-native-gesture-handler";
 import * as Haptics from "expo-haptics";
@@ -73,8 +73,11 @@ export function TaskListScreen() {
   const { data, refetch, isLoading } = useGetActionQueue();
   const updateAction = useUpdateAction();
   const deleteAction = useDeleteAction();
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const [refreshing, setRefreshing] = useState(false);
   const [refiningId, setRefiningId] = useState<number | null>(null);
   const [isRefining, setIsRefining] = useState(false);
+  const [notes, setNotes] = useState<Record<number, string>>({});
 
   const invalidateQueue = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: [queueUrl] });
@@ -157,6 +160,7 @@ export function TaskListScreen() {
           return;
         }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setNotes((current) => ({ ...current, [id]: "" }));
         invalidateQueue();
       } catch {
         Alert.alert("Refine failed", "Please try speaking again.");
@@ -165,6 +169,50 @@ export function TaskListScreen() {
       }
     },
     [apiKey, invalidateQueue, recorder],
+  );
+
+  const refineFromText = useCallback(
+    async (id: number) => {
+      const note = (notes[id] ?? "").trim();
+      if (!note) {
+        Alert.alert("Add a note", "Type how you want this task refined, then tap Refine.");
+        return;
+      }
+      if (isRefining) return;
+      setIsRefining(true);
+      setRefiningId(id);
+      try {
+        const apiBase = await resolveApiBase();
+        const res = await fetch(`${apiBase}/actions/${id}/refine`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ note }),
+        });
+        if (!res.ok) {
+          let detail = "Couldn't refine that";
+          try {
+            const body = (await res.json()) as { error?: string };
+            if (body.error) detail = body.error;
+          } catch {
+            detail = `Server returned ${res.status}`;
+          }
+          Alert.alert("Refine failed", detail);
+          return;
+        }
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setNotes((current) => ({ ...current, [id]: "" }));
+        invalidateQueue();
+      } catch {
+        Alert.alert("Refine failed", "Please try again.");
+      } finally {
+        setIsRefining(false);
+        setRefiningId(null);
+      }
+    },
+    [apiKey, invalidateQueue, isRefining, notes],
   );
 
   const handleRefine = useCallback(
@@ -211,6 +259,8 @@ export function TaskListScreen() {
         sections={sections}
         keyExtractor={(item) => String(item.id)}
         stickySectionHeadersEnabled={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.accent} />
@@ -272,23 +322,44 @@ export function TaskListScreen() {
                       {`• ${step}`}
                     </Text>
                   ))}
-                  <Pressable
-                    onPress={() => void handleRefine(item.id)}
-                    disabled={isRefining && !listening}
-                    style={({ pressed }) => [
-                      styles.refineBtn,
-                      listening && styles.refineBtnActive,
-                      pressed && { opacity: 0.85 },
-                    ]}
-                  >
-                    <Text style={[styles.refineText, listening && styles.refineTextActive]}>
-                      {isRefining && listening
-                        ? "Refining…"
-                        : listening
-                          ? "Tap to stop"
-                          : "Refine"}
-                    </Text>
-                  </Pressable>
+                  <TextInput
+                    style={styles.noteInput}
+                    value={notes[item.id] ?? ""}
+                    onChangeText={(text) =>
+                      setNotes((current) => ({ ...current, [item.id]: text }))
+                    }
+                    placeholder="Type a refinement or paste a transcript…"
+                    placeholderTextColor={COLORS.inkDim}
+                    multiline
+                    editable={!isRefining}
+                  />
+                  <View style={styles.refineRow}>
+                    <Pressable
+                      onPress={() => void refineFromText(item.id)}
+                      disabled={isRefining}
+                      style={({ pressed }) => [
+                        styles.refineBtn,
+                        pressed && { opacity: 0.85 },
+                      ]}
+                    >
+                      <Text style={styles.refineText}>
+                        {isRefining && refiningId === item.id ? "Refining…" : "Refine"}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => void handleRefine(item.id)}
+                      disabled={isRefining && !listening}
+                      style={({ pressed }) => [
+                        styles.speakBtn,
+                        listening && styles.refineBtnActive,
+                        pressed && { opacity: 0.85 },
+                      ]}
+                    >
+                      <Text style={[styles.speakText, listening && styles.refineTextActive]}>
+                        {listening ? "Tap to stop" : "Speak"}
+                      </Text>
+                    </Pressable>
+                  </View>
                 </View>
               </Swipeable>
             </View>
@@ -356,21 +427,46 @@ const styles = StyleSheet.create({
     marginTop: 8,
     backgroundColor: COLORS.bg,
   },
-  refineBtn: {
+  refineRow: { flexDirection: "row", gap: 8, marginTop: 10 },
+  noteInput: {
     marginTop: 10,
-    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderColor: COLORS.hairline,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minHeight: 64,
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    color: COLORS.ink,
+    backgroundColor: "#fff",
+    textAlignVertical: "top",
+  },
+  refineBtn: {
+    flex: 1,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: COLORS.accent + "44",
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 10,
     backgroundColor: "#fff",
+    alignItems: "center",
+  },
+  speakBtn: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.accent + "44",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: "#fff",
+    alignItems: "center",
   },
   refineBtnActive: {
     backgroundColor: COLORS.accent,
     borderColor: COLORS.accent,
   },
   refineText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.accent },
+  speakText: { fontFamily: "Inter_600SemiBold", fontSize: 13, color: COLORS.accent },
   refineTextActive: { color: "#fff" },
   empty: { paddingVertical: 60, alignItems: "center", paddingHorizontal: 32 },
   emptyText: {

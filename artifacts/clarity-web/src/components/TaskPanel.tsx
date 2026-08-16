@@ -34,7 +34,10 @@ type TaskPanelProps = {
   isLoading?: boolean;
   onComplete: (id: number) => void;
   onDelete: (id: number) => void;
-  onRefine: (id: number) => void;
+  onRefineVoice: (id: number) => void;
+  onRefineText: (id: number, note: string) => void;
+  notes: Record<number, string>;
+  onNoteChange: (id: number, note: string) => void;
   refiningId?: number | null;
   isRefining?: boolean;
   compact?: boolean;
@@ -53,7 +56,10 @@ export function TaskPanel({
   isLoading,
   onComplete,
   onDelete,
-  onRefine,
+  onRefineVoice,
+  onRefineText,
+  notes,
+  onNoteChange,
   refiningId = null,
   isRefining = false,
   compact = false,
@@ -124,18 +130,37 @@ export function TaskPanel({
                             ))}
                           </ol>
                         )}
-                        <button
-                          type="button"
-                          disabled={isRefining && !listening}
-                          onClick={() => onRefine(a.id)}
-                          className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
-                            listening
-                              ? "border-[#c8553d] bg-[#c8553d] text-white"
-                              : "border-[#c8553d44] bg-white text-[#c8553d]"
-                          }`}
-                        >
-                          {isRefining && listening ? "Refining…" : listening ? "Tap to stop" : "Refine"}
-                        </button>
+                        <textarea
+                          value={notes[a.id] ?? ""}
+                          onChange={(e) => onNoteChange(a.id, e.target.value)}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          placeholder="Type a refinement or paste a transcript…"
+                          disabled={isRefining}
+                          rows={3}
+                          className="mb-2 w-full resize-y rounded-lg border border-[#ebe5dd] bg-white px-3 py-2 text-sm text-[#1a1715] outline-none focus:border-[#c8553d]"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            disabled={isRefining}
+                            onClick={() => onRefineText(a.id, notes[a.id] ?? "")}
+                            className="rounded-lg border border-[#c8553d44] bg-white px-3 py-2 text-xs font-semibold text-[#c8553d]"
+                          >
+                            {isRefining && refiningId === a.id && !listening ? "Refining…" : "Refine"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isRefining && !listening}
+                            onClick={() => onRefineVoice(a.id)}
+                            className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
+                              listening
+                                ? "border-[#c8553d] bg-[#c8553d] text-white"
+                                : "border-[#c8553d44] bg-white text-[#c8553d]"
+                            }`}
+                          >
+                            {listening ? "Tap to stop" : "Speak"}
+                          </button>
+                        </div>
                       </div>
                     </SwipeTask>
                   </li>

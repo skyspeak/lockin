@@ -27,6 +27,7 @@ export default function Home() {
   const [lastCaptured, setLastCaptured] = useState<{ title: string; nextSteps: string[] }[]>([]);
   const [refiningId, setRefiningId] = useState<number | null>(null);
   const [isRefining, setIsRefining] = useState(false);
+  const [notes, setNotes] = useState<Record<number, string>>({});
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
   const refineRecorder = useRef<MediaRecorder | null>(null);
@@ -161,6 +162,7 @@ export default function Home() {
         }
         invalidate();
         toast({ title: "Task refined" });
+        setNotes((current) => ({ ...current, [id]: "" }));
       } catch {
         toast({ title: "Couldn't refine that", variant: "destructive" });
       } finally {
@@ -171,7 +173,48 @@ export default function Home() {
     [apiKey, invalidate, toast],
   );
 
-  const onRefine = useCallback(
+  const onRefineText = useCallback(
+    async (id: number, note: string) => {
+      const trimmed = note.trim();
+      if (!trimmed) {
+        toast({ title: "Add a note", description: "Type how you want this task refined." });
+        return;
+      }
+      if (isRefining) return;
+      setIsRefining(true);
+      try {
+        const res = await fetch(`/api/actions/${id}/refine`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ note: trimmed }),
+        });
+        if (!res.ok) {
+          let detail = "Couldn't refine that";
+          try {
+            const body = (await res.json()) as { error?: string };
+            if (body.error) detail = body.error;
+          } catch {
+            detail = `Server returned ${res.status}`;
+          }
+          toast({ title: detail, variant: "destructive" });
+          return;
+        }
+        setNotes((current) => ({ ...current, [id]: "" }));
+        invalidate();
+        toast({ title: "Task refined" });
+      } catch {
+        toast({ title: "Couldn't refine that", variant: "destructive" });
+      } finally {
+        setIsRefining(false);
+      }
+    },
+    [apiKey, invalidate, isRefining, toast],
+  );
+
+  const onRefineVoice = useCallback(
     async (id: number) => {
       if (isRefining) return;
       if (refiningId === id) {
@@ -279,7 +322,10 @@ export default function Home() {
               isLoading={isLoading}
               onComplete={complete}
               onDelete={remove}
-              onRefine={onRefine}
+              onRefineVoice={onRefineVoice}
+              onRefineText={onRefineText}
+              notes={notes}
+              onNoteChange={(id, note) => setNotes((current) => ({ ...current, [id]: note }))}
               refiningId={refiningId}
               isRefining={isRefining}
               compact

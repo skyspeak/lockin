@@ -127,17 +127,6 @@ router.post("/:id/refine", audioLimiter, audioUpload.single("audio"), async (req
   if (!Number.isInteger(rawId) || rawId < 1) {
     return res.status(400).json({ error: "Invalid id" });
   }
-  if (!req.file) {
-    return res.status(400).json({ error: "Missing audio file (field name: 'audio')" });
-  }
-  if (req.file.buffer.length < 8) {
-    return res.status(400).json({ error: "Recording too short. Speak the refinement, then stop." });
-  }
-
-  const sniffed = sniffAudioMime(req.file.buffer);
-  if (!sniffed) {
-    return res.status(415).json({ error: "Unsupported audio type" });
-  }
 
   const userId = req.userId;
   const [existing] = await db
@@ -148,13 +137,27 @@ router.post("/:id/refine", audioLimiter, audioUpload.single("audio"), async (req
   if (!existing) return res.status(404).json({ error: "Action not found" });
 
   try {
-    const note = await transcribeAudio({
-      buffer: req.file.buffer,
-      mime: sniffed,
-      filename: safeAudioFilename(req.file.originalname),
-    });
-    if (!note.trim()) {
-      return res.status(400).json({ error: "Nothing captured. Try speaking again." });
+    let note = typeof req.body?.note === "string" ? req.body.note.trim() : "";
+
+    if (req.file) {
+      if (req.file.buffer.length < 8) {
+        return res.status(400).json({ error: "Recording too short. Speak the refinement, then stop." });
+      }
+      const sniffed = sniffAudioMime(req.file.buffer);
+      if (!sniffed) {
+        return res.status(415).json({ error: "Unsupported audio type" });
+      }
+      note = (
+        await transcribeAudio({
+          buffer: req.file.buffer,
+          mime: sniffed,
+          filename: safeAudioFilename(req.file.originalname),
+        })
+      ).trim();
+    }
+
+    if (!note) {
+      return res.status(400).json({ error: "Type a note or record a voice refinement." });
     }
 
     const refined = await refineActionFromNote({
@@ -173,7 +176,7 @@ router.post("/:id/refine", audioLimiter, audioUpload.single("audio"), async (req
       .where(and(eq(actionsTable.id, rawId), eq(actionsTable.userId, userId)))
       .returning();
 
-    return res.json({ transcript: note.trim(), action });
+    return res.json({ transcript: note, action });
   } catch (err) {
     req.log.error(
       { err: err instanceof Error ? err.message : "unknown" },
