@@ -20,5 +20,5 @@ export function resolveDefaultApiOrigin(): string {
   const fromDomain = process.env.EXPO_PUBLIC_DOMAIN?.trim();
   if (fromDomain) return normalizeApiOrigin(fromDomain);
 
-  return "";
+  return "https://workspaceapi-server-production-2b2a.up.railway.app";
 }

@@ -15,9 +15,9 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { SetupScreen } from "@/components/SetupScreen";
+import { AuthScreen } from "@/components/AuthScreen";
 import { ApiKeyContext, SessionContext } from "@/components/AuthContext";
-import { normalizeApiOrigin, resolveDefaultApiOrigin } from "@/constants/api";
+import { getApiBasePath, normalizeApiOrigin, resolveDefaultApiOrigin } from "@/constants/api";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -69,34 +69,49 @@ export default function RootLayout() {
     }
   }, [fontsLoaded, fontError, keyChecked]);
 
-  if ((!fontsLoaded && !fontError) || !keyChecked) return null;
-
-  if (!apiKey) {
-    return (
-      <SafeAreaProvider>
-        <SetupScreen
-          onSetup={(serverUrl, key) => {
-            AsyncStorage.multiSet([
-              [STORAGE_KEY, key],
-              [SERVER_STORAGE_KEY, serverUrl],
-            ]).catch(() => {});
-            applyApiOrigin(serverUrl);
-            setAuthTokenGetter(() => key);
-            setApiKey(key);
-          }}
-        />
-      </SafeAreaProvider>
-    );
-  }
-
   const logout = useCallback(() => {
     AsyncStorage.multiRemove([STORAGE_KEY, SERVER_STORAGE_KEY]).catch(() => {});
     setAuthTokenGetter(null);
     setApiKey("");
   }, []);
 
+  const deleteAccount = useCallback(async () => {
+    const origin = (await AsyncStorage.getItem(SERVER_STORAGE_KEY)) || resolveDefaultApiOrigin();
+    if (apiKey && origin) {
+      try {
+        await fetch(`${getApiBasePath(origin)}/auth/account`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${apiKey}` },
+        });
+      } catch {
+        // Still sign out locally so the device is not stuck.
+      }
+    }
+    logout();
+  }, [apiKey, logout]);
+
+  if ((!fontsLoaded && !fontError) || !keyChecked) return null;
+
+  if (!apiKey) {
+    return (
+      <SafeAreaProvider>
+        <AuthScreen
+          onAuth={(serverUrl, token) => {
+            AsyncStorage.multiSet([
+              [STORAGE_KEY, token],
+              [SERVER_STORAGE_KEY, serverUrl],
+            ]).catch(() => {});
+            applyApiOrigin(serverUrl);
+            setAuthTokenGetter(() => token);
+            setApiKey(token);
+          }}
+        />
+      </SafeAreaProvider>
+    );
+  }
+
   return (
-    <SessionContext.Provider value={{ logout }}>
+    <SessionContext.Provider value={{ logout, deleteAccount }}>
       <ApiKeyContext.Provider value={apiKey}>
         <SafeAreaProvider>
           <ErrorBoundary>

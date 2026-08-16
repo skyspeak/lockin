@@ -82,6 +82,15 @@ app.use("/api", router);
 const webRoot = resolveWebRoot();
 if (webRoot) {
   logger.info({ webRoot }, "Serving Clarity web UI");
+  const sendLegal = (file: string) => (req: Request, res: Response, next: NextFunction) => {
+    res.sendFile(path.join(webRoot, file), (err) => {
+      if (err) next(err);
+    });
+  };
+  app.get("/privacy", sendLegal("privacy.html"));
+  app.get("/privacy.html", sendLegal("privacy.html"));
+  app.get("/terms", sendLegal("terms.html"));
+  app.get("/terms.html", sendLegal("terms.html"));
   app.use(express.static(webRoot, { index: false, fallthrough: true }));
   app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.method !== "GET" && req.method !== "HEAD") return next();

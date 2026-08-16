@@ -86,6 +86,16 @@ async function migrateSchema(): Promise<void> {
       logger.info({ count: actions.rowCount }, "Backfilled legacy actions with derived userId");
     }
   }
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
 }
 
 migrateSchema()

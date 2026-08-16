@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
@@ -7,12 +7,14 @@ import { useSession } from "@/components/AuthContext";
 import { resolveDefaultApiOrigin } from "@/constants/api";
 
 const SERVER_STORAGE_KEY = "clarity_api_server_url";
+const PRIVACY_PATH = "/privacy";
+const TERMS_PATH = "/terms";
 
-async function openWebTasks() {
+async function openWeb(path = "") {
   const stored = await AsyncStorage.getItem(SERVER_STORAGE_KEY);
   const origin = (stored || resolveDefaultApiOrigin()).replace(/\/+$/, "");
   if (!origin) return;
-  await WebBrowser.openBrowserAsync(origin);
+  await WebBrowser.openBrowserAsync(`${origin}${path}`);
 }
 
 async function openTestFlightUpdate() {
@@ -26,17 +28,44 @@ async function openTestFlightUpdate() {
 }
 
 export default function SettingsScreen() {
-  const { logout } = useSession();
+  const { logout, deleteAccount } = useSession();
+
+  const confirmDelete = () => {
+    Alert.alert(
+      "Delete account?",
+      "This permanently deletes your tasks and cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            void deleteAccount();
+          },
+        },
+      ],
+    );
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
       <Text style={styles.title}>Settings</Text>
-      <Text style={styles.sub}>Account, web tasks, and TestFlight updates.</Text>
+      <Text style={styles.sub}>Account, legal, and updates.</Text>
 
       <View style={styles.card}>
-        <Pressable style={styles.row} onPress={() => void openWebTasks()}>
+        <Pressable style={styles.row} onPress={() => void openWeb()}>
           <Text style={styles.rowTitle}>View tasks on the web</Text>
-          <Text style={styles.rowHint}>Opens your Clarity server in Safari</Text>
+          <Text style={styles.rowHint}>Opens Clarity in Safari</Text>
+        </Pressable>
+        <View style={styles.hairline} />
+        <Pressable style={styles.row} onPress={() => void openWeb(PRIVACY_PATH)}>
+          <Text style={styles.rowTitle}>Privacy Policy</Text>
+          <Text style={styles.rowHint}>How we handle your voice and tasks</Text>
+        </Pressable>
+        <View style={styles.hairline} />
+        <Pressable style={styles.row} onPress={() => void openWeb(TERMS_PATH)}>
+          <Text style={styles.rowTitle}>Terms of Use</Text>
+          <Text style={styles.rowHint}>The rules for using Clarity</Text>
         </Pressable>
         <View style={styles.hairline} />
         <Pressable style={styles.row} onPress={() => void openTestFlightUpdate()}>
@@ -45,8 +74,13 @@ export default function SettingsScreen() {
         </Pressable>
         <View style={styles.hairline} />
         <Pressable style={styles.row} onPress={logout}>
-          <Text style={[styles.rowTitle, styles.danger]}>Log out</Text>
-          <Text style={styles.rowHint}>Clears the API key on this phone</Text>
+          <Text style={styles.rowTitle}>Log out</Text>
+          <Text style={styles.rowHint}>Sign out on this phone. Your tasks stay in your account.</Text>
+        </Pressable>
+        <View style={styles.hairline} />
+        <Pressable style={styles.row} onPress={confirmDelete}>
+          <Text style={[styles.rowTitle, styles.danger]}>Delete account</Text>
+          <Text style={styles.rowHint}>Permanently remove your account and all tasks</Text>
         </Pressable>
       </View>
     </SafeAreaView>

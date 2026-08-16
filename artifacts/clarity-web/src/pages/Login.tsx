@@ -1,36 +1,48 @@
 import { useState } from "react";
 
 interface LoginProps {
-  onLogin: (key: string) => void;
+  onLogin: (token: string) => void;
 }
 
+type Mode = "signin" | "signup";
+
 export default function Login({ onLogin }: LoginProps) {
-  const [value, setValue] = useState("");
+  const [mode, setMode] = useState<Mode>("signup");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmed = value.trim();
-    if (!trimmed) {
-      setError("API key is required");
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !password) {
+      setError("Email and password are required");
+      return;
+    }
+    if (mode === "signup" && password.length < 8) {
+      setError("Password must be at least 8 characters");
       return;
     }
 
     setBusy(true);
     try {
-      const res = await fetch("/api/actions/queue", {
-        headers: { Authorization: `Bearer ${trimmed}` },
+      const path = mode === "signup" ? "/api/auth/signup" : "/api/auth/login";
+      const res = await fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: trimmedEmail, password }),
       });
-      if (res.status === 401) {
-        setError("API key does not match this server");
-        return;
-      }
+      const body = (await res.json().catch(() => ({}))) as { token?: string; error?: string };
       if (!res.ok) {
-        setError(`Server returned ${res.status}`);
+        setError(body.error || `Server returned ${res.status}`);
         return;
       }
-      onLogin(trimmed);
+      if (!body.token) {
+        setError("Could not start a session. Please try again.");
+        return;
+      }
+      onLogin(body.token);
     } catch {
       setError("Could not reach the API.");
     } finally {
@@ -48,18 +60,32 @@ export default function Login({ onLogin }: LoginProps) {
           Clarity
         </h1>
         <p className="text-sm text-[#7a716b] text-center mb-8">
-          Speak tasks. Stay organized. Enter your API key to start.
+          {mode === "signup"
+            ? "Create an account to capture thoughts and keep your own task list."
+            : "Sign in to your Clarity account."}
         </p>
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           <input
-            type="password"
-            value={value}
+            type="email"
+            value={email}
             onChange={(e) => {
-              setValue(e.target.value);
+              setEmail(e.target.value);
               setError("");
             }}
-            placeholder="API key"
+            placeholder="Email"
+            autoComplete="email"
             autoFocus
+            className="w-full rounded-xl border border-[#ebe5dd] bg-white px-4 py-3 text-sm text-[#1a1715] outline-none focus:border-[#c8553d] transition-colors"
+          />
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              setError("");
+            }}
+            placeholder={mode === "signup" ? "Password (8+ characters)" : "Password"}
+            autoComplete={mode === "signup" ? "new-password" : "current-password"}
             className="w-full rounded-xl border border-[#ebe5dd] bg-white px-4 py-3 text-sm text-[#1a1715] outline-none focus:border-[#c8553d] transition-colors"
           />
           {error && <p className="text-xs text-red-500">{error}</p>}
@@ -68,9 +94,30 @@ export default function Login({ onLogin }: LoginProps) {
             disabled={busy}
             className="w-full rounded-xl bg-[#c8553d] py-3 text-sm font-semibold text-white hover:bg-[#b34a35] transition-colors disabled:opacity-60"
           >
-            {busy ? "Checking…" : "Unlock"}
+            {busy ? "Please wait…" : mode === "signup" ? "Create account" : "Sign in"}
           </button>
         </form>
+        <button
+          type="button"
+          onClick={() => {
+            setMode(mode === "signup" ? "signin" : "signup");
+            setError("");
+          }}
+          className="mt-4 w-full text-center text-sm font-semibold text-[#c8553d]"
+        >
+          {mode === "signup" ? "Already have an account? Sign in" : "Need an account? Create one"}
+        </button>
+        <p className="mt-6 text-center text-xs text-[#7a716b]">
+          By continuing you agree to the{" "}
+          <a href="/terms" className="underline">
+            Terms
+          </a>{" "}
+          and{" "}
+          <a href="/privacy" className="underline">
+            Privacy Policy
+          </a>
+          .
+        </p>
       </div>
     </div>
   );

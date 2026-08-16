@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { createHash, timingSafeEqual } from "crypto";
+import { verifyAccessToken } from "../lib/tokens";
 
 const rawSecret = process.env.API_SECRET;
 
@@ -29,7 +30,7 @@ function secretsEqual(provided: string, expected: string): boolean {
   return timingSafeEqual(a, b);
 }
 
-export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -39,11 +40,18 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
 
   const token = authHeader.slice(7);
 
-  if (!secretsEqual(token, API_SECRET)) {
+  if (secretsEqual(token, API_SECRET)) {
+    req.userId = DERIVED_USER_ID;
+    next();
+    return;
+  }
+
+  const userId = await verifyAccessToken(token);
+  if (!userId) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
-  req.userId = DERIVED_USER_ID;
+  req.userId = userId;
   next();
 }
