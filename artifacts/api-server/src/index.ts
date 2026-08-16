@@ -3,6 +3,9 @@ import { logger } from "./lib/logger";
 import { pool } from "@workspace/db";
 import { DERIVED_USER_ID } from "./middlewares/auth";
 
+// Railway deploys from this package; keep a source change here so lockfile-only
+// commits at the repo root still trigger a rebuild.
+
 const rawPort = process.env["PORT"];
 
 if (!rawPort) {
