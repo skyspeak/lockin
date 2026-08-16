@@ -54,7 +54,17 @@ export default function Home() {
             body: form,
             headers: { Authorization: `Bearer ${apiKey}` },
           });
-          if (!res.ok) throw new Error("capture failed");
+          if (!res.ok) {
+            let detail = "Couldn't turn that into tasks";
+            try {
+              const body = (await res.json()) as { error?: string };
+              if (body.error) detail = body.error;
+            } catch {
+              detail = `Server returned ${res.status}`;
+            }
+            toast({ title: detail, variant: "destructive" });
+            return;
+          }
           const json = (await res.json()) as {
             transcript?: string;
             actions?: { title: string; nextSteps?: string[] }[];

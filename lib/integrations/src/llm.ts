@@ -11,12 +11,12 @@ export type ChatConfig = {
 
 const OPENROUTER_DEFAULTS = {
   baseURL: "https://openrouter.ai/api/v1",
-  model: "google/gemini-2.0-flash-001",
+  model: "google/gemini-3.5-flash",
 } as const;
 
 const GEMINI_DEFAULTS = {
   baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
-  model: "gemini-2.0-flash",
+  model: "gemini-3.5-flash",
 } as const;
 
 function parseProvider(raw: string | undefined): ChatProvider {
