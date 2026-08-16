@@ -3,12 +3,14 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  AppState,
   Easing,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { useFocusEffect } from "expo-router";
 import * as Haptics from "expo-haptics";
 import {
   AudioModule,
@@ -46,38 +48,64 @@ export function useVoiceCapture() {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [lastCaptured, setLastCaptured] = useState<{ title: string; nextSteps: string[] }[]>([]);
-
-  useEffect(() => {
-    (async () => {
-      const status = await AudioModule.requestRecordingPermissionsAsync();
-      if (!status.granted) return;
-      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
-    })();
-  }, []);
+  const focusedRef = useRef(false);
+  const recordingRef = useRef(false);
+  const transcribingRef = useRef(false);
 
   const invalidateQueue = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: [queueUrl] });
   }, [queryClient, queueUrl]);
 
   const startRecording = useCallback(async () => {
+    if (recordingRef.current || transcribingRef.current || !focusedRef.current) return;
+    recordingRef.current = true;
     try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const status = await AudioModule.requestRecordingPermissionsAsync();
+      if (!status.granted) {
+        recordingRef.current = false;
+        setIsRecording(false);
+        Alert.alert("Mic unavailable", "Please grant microphone permission in Settings.");
+        return;
+      }
+      if (!focusedRef.current) {
+        recordingRef.current = false;
+        return;
+      }
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
       await recorder.prepareToRecordAsync();
       recorder.record();
       setIsRecording(true);
     } catch {
-      Alert.alert("Mic unavailable", "Please grant microphone permission in Settings.");
+      recordingRef.current = false;
+      setIsRecording(false);
     }
   }, [recorder]);
 
+  const stopOnly = useCallback(async () => {
+    if (!recordingRef.current) return;
+    try {
+      await recorder.stop();
+    } catch {
+      // already stopped
+    }
+    recordingRef.current = false;
+    setIsRecording(false);
+  }, [recorder]);
+
   const stopAndTranscribe = useCallback(async () => {
+    if (!recordingRef.current || transcribingRef.current) return;
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       await recorder.stop();
+      recordingRef.current = false;
       setIsRecording(false);
       const uri = recorder.uri;
-      if (!uri) return;
+      if (!uri) {
+        if (focusedRef.current) void startRecording();
+        return;
+      }
 
+      transcribingRef.current = true;
       setIsTranscribing(true);
 
       const form = new FormData();
@@ -105,16 +133,14 @@ export function useVoiceCapture() {
             "API key rejected",
             "The key does not match API_SECRET on the Railway API service.",
           );
-          return;
-        }
-        if (res.status === 415 || /unsupported audio/i.test(detail)) {
+        } else if (res.status === 415 || /unsupported audio/i.test(detail)) {
           Alert.alert("Couldn't read that recording", "Try speaking again for a couple of seconds.");
-          return;
+        } else {
+          Alert.alert(
+            "Couldn't turn that into tasks",
+            detail || `Server returned ${res.status}. Check GEMINI_API_KEY on Railway.`,
+          );
         }
-        Alert.alert(
-          "Couldn't turn that into tasks",
-          detail || `Server returned ${res.status}. Check GEMINI_API_KEY on Railway.`,
-        );
         return;
       }
       const json = (await res.json()) as { actions?: { title: string; nextSteps?: string[] }[] };
@@ -132,9 +158,37 @@ export function useVoiceCapture() {
     } catch {
       Alert.alert("Couldn't turn that into tasks", "Please try again.");
     } finally {
+      transcribingRef.current = false;
       setIsTranscribing(false);
+      if (focusedRef.current) {
+        setTimeout(() => {
+          if (focusedRef.current) void startRecording();
+        }, 250);
+      }
     }
-  }, [apiKey, invalidateQueue, recorder]);
+  }, [apiKey, invalidateQueue, recorder, startRecording]);
+
+  useFocusEffect(
+    useCallback(() => {
+      focusedRef.current = true;
+      void startRecording();
+      return () => {
+        focusedRef.current = false;
+        void stopOnly();
+      };
+    }, [startRecording, stopOnly]),
+  );
+
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state !== "active") {
+        void stopOnly();
+        return;
+      }
+      if (focusedRef.current) void startRecording();
+    });
+    return () => sub.remove();
+  }, [startRecording, stopOnly]);
 
   const onMicPress = isRecording ? stopAndTranscribe : startRecording;
 
@@ -183,7 +237,13 @@ export function VoiceCaptureHero({
     <View style={styles.hero}>
       <Text style={styles.kicker}>VOICE FIRST</Text>
       <Text style={styles.brand}>Clarity</Text>
-      <Text style={styles.sub}>Speak a thought. I'll turn it into tasks and next steps.</Text>
+      <Text style={styles.sub}>
+        {isTranscribing
+          ? "Turning that into tasks and next steps…"
+          : isRecording
+            ? "Listening. Speak, then tap to send."
+            : "Opening the mic…"}
+      </Text>
 
       <View style={styles.micWrap}>
         {isRecording && (
@@ -207,11 +267,15 @@ export function VoiceCaptureHero({
           )}
         </Pressable>
         <Text style={styles.micLabel}>
-          {isTranscribing ? "Turning that into tasks and next steps…" : isRecording ? "Tap to stop" : "Tap to speak"}
+          {isTranscribing
+            ? "Turning that into tasks and next steps…"
+            : isRecording
+              ? "Tap to send"
+              : "Tap if listening didn’t start"}
         </Text>
       </View>
 
-      {lastCaptured.length > 0 && !isRecording && !isTranscribing ? (
+      {lastCaptured.length > 0 && !isTranscribing ? (
         <View style={styles.captured}>
           <Text style={styles.capturedLabel}>JUST ADDED</Text>
           {lastCaptured.map((item, index) => (

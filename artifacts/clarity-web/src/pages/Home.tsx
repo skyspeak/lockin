@@ -23,33 +23,59 @@ export default function Home() {
 
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
-  const [tasksOpen, setTasksOpen] = useState(true);
+  const [tasksOpen, setTasksOpen] = useState(false);
   const [lastCaptured, setLastCaptured] = useState<{ title: string; nextSteps: string[] }[]>([]);
   const [refiningId, setRefiningId] = useState<number | null>(null);
   const [isRefining, setIsRefining] = useState(false);
   const [notes, setNotes] = useState<Record<number, string>>({});
   const mediaRecorder = useRef<MediaRecorder | null>(null);
+  const captureSession = useRef<{ discard: boolean } | null>(null);
   const chunks = useRef<Blob[]>([]);
   const refineRecorder = useRef<MediaRecorder | null>(null);
   const refineChunks = useRef<Blob[]>([]);
+  const mountedRef = useRef(true);
+  const recordingRef = useRef(false);
+  const transcribingRef = useRef(false);
+  const apiKeyRef = useRef(apiKey);
+  const toastRef = useRef(toast);
+  apiKeyRef.current = apiKey;
+  toastRef.current = toast;
 
   const invalidate = useCallback(() => {
     qc.invalidateQueries({ queryKey: [queueKey] });
   }, [qc, queueKey]);
+  const invalidateRef = useRef(invalidate);
+  invalidateRef.current = invalidate;
+
+  const startRecordingRef = useRef<() => Promise<void>>(async () => {});
 
   const startRecording = useCallback(async () => {
+    if (recordingRef.current || transcribingRef.current || !mountedRef.current) return;
+    recordingRef.current = true;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!mountedRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        recordingRef.current = false;
+        return;
+      }
       const mr = new MediaRecorder(stream);
+      const session = { discard: false };
+      captureSession.current = session;
       chunks.current = [];
       mr.ondataavailable = (e) => {
         if (e.data.size > 0) chunks.current.push(e.data);
       };
       mr.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
+        recordingRef.current = false;
+        setIsRecording(false);
+        if (session.discard || !mountedRef.current) return;
+
+        transcribingRef.current = true;
+        setIsTranscribing(true);
         const blobType = mr.mimeType || "audio/webm";
         const blob = new Blob(chunks.current, { type: blobType });
-        setIsTranscribing(true);
         try {
           const form = new FormData();
           const filename = blobType.includes("mp4") || blobType.includes("m4a") ? "audio.m4a" : "audio.webm";
@@ -57,7 +83,7 @@ export default function Home() {
           const res = await fetch(`${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/capture`, {
             method: "POST",
             body: form,
-            headers: { Authorization: `Bearer ${apiKey}` },
+            headers: { Authorization: `Bearer ${apiKeyRef.current}` },
           });
           if (!res.ok) {
             let detail = "Couldn't turn that into tasks";
@@ -67,7 +93,7 @@ export default function Home() {
             } catch {
               detail = `Server returned ${res.status}`;
             }
-            toast({ title: detail, variant: "destructive" });
+            toastRef.current({ title: detail, variant: "destructive" });
             return;
           }
           const json = (await res.json()) as {
@@ -78,39 +104,72 @@ export default function Home() {
             .map((a) => ({ title: a.title, nextSteps: a.nextSteps ?? [] }))
             .filter((a) => a.title);
           if (items.length === 0) {
-            toast({ title: "Nothing captured", description: "Try speaking again." });
+            toastRef.current({ title: "Nothing captured", description: "Try speaking again." });
             return;
           }
           setLastCaptured(items);
-          invalidate();
-          toast({
+          invalidateRef.current();
+          toastRef.current({
             title: items.length === 1 ? "Task added" : `${items.length} tasks added`,
             description: items.map((item) => item.title).join(" · "),
           });
         } catch {
-          toast({ title: "Couldn't turn that into tasks", variant: "destructive" });
+          toastRef.current({ title: "Couldn't turn that into tasks", variant: "destructive" });
         } finally {
+          transcribingRef.current = false;
           setIsTranscribing(false);
+          if (mountedRef.current) void startRecordingRef.current();
         }
       };
       mr.start();
       mediaRecorder.current = mr;
       setIsRecording(true);
     } catch {
-      toast({
+      recordingRef.current = false;
+      setIsRecording(false);
+      toastRef.current({
         title: "Microphone blocked",
-        description: "Allow microphone access to capture tasks by voice.",
+        description: "Allow microphone access, then tap the button to start listening.",
         variant: "destructive",
       });
     }
-  }, [apiKey, invalidate, toast]);
+  }, []);
+  startRecordingRef.current = startRecording;
+
+  const stopOnly = useCallback(() => {
+    if (!recordingRef.current) return;
+    if (captureSession.current) captureSession.current.discard = true;
+    if (mediaRecorder.current && mediaRecorder.current.state !== "inactive") {
+      mediaRecorder.current.stop();
+    }
+    recordingRef.current = false;
+    setIsRecording(false);
+  }, []);
 
   const stopRecording = useCallback(() => {
-    mediaRecorder.current?.stop();
+    if (!recordingRef.current) return;
+    if (captureSession.current) captureSession.current.discard = false;
+    if (mediaRecorder.current && mediaRecorder.current.state !== "inactive") {
+      mediaRecorder.current.stop();
+    }
+    recordingRef.current = false;
     setIsRecording(false);
   }, []);
 
   const onMic = isRecording ? stopRecording : startRecording;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    void startRecording();
+    return () => {
+      mountedRef.current = false;
+      if (captureSession.current) captureSession.current.discard = true;
+      if (mediaRecorder.current && mediaRecorder.current.state !== "inactive") {
+        mediaRecorder.current.stop();
+      }
+      recordingRef.current = false;
+    };
+  }, [startRecording]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -168,9 +227,10 @@ export default function Home() {
       } finally {
         setIsRefining(false);
         setRefiningId(null);
+        if (mountedRef.current) void startRecording();
       }
     },
-    [apiKey, invalidate, toast],
+    [apiKey, invalidate, startRecording, toast],
   );
 
   const onRefineText = useCallback(
@@ -209,9 +269,10 @@ export default function Home() {
         toast({ title: "Couldn't refine that", variant: "destructive" });
       } finally {
         setIsRefining(false);
+        if (mountedRef.current) void startRecording();
       }
     },
-    [apiKey, invalidate, isRefining, toast],
+    [apiKey, invalidate, isRefining, startRecording, toast],
   );
 
   const onRefineVoice = useCallback(
@@ -221,6 +282,7 @@ export default function Home() {
         refineRecorder.current?.stop();
         return;
       }
+      stopOnly();
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const mr = new MediaRecorder(stream);
@@ -244,7 +306,7 @@ export default function Home() {
         });
       }
     },
-    [isRefining, refiningId, sendRefine, toast],
+    [isRefining, refiningId, sendRefine, stopOnly, toast],
   );
 
   return (
@@ -259,7 +321,11 @@ export default function Home() {
             Clarity
           </h1>
           <p className="mt-2 text-[#7a716b] text-sm max-w-sm mx-auto">
-            Speak a thought. I'll turn it into tasks and next steps.
+            {isTranscribing
+              ? "Turning that into tasks and next steps…"
+              : isRecording
+                ? "Listening. Speak, then tap to send."
+                : "Opening the mic…"}
           </p>
         </header>
 
@@ -269,7 +335,7 @@ export default function Home() {
           onPress={onMic}
         />
 
-        {lastCaptured.length > 0 && !isRecording && !isTranscribing && (
+        {lastCaptured.length > 0 && !isTranscribing && (
           <div className="mt-8 max-w-md w-full rounded-2xl border border-[#c8553d33] bg-[#c8553d08] px-4 py-3 text-center">
             <p className="text-xs font-semibold uppercase tracking-wide text-[#c8553d] mb-1">
               Just added

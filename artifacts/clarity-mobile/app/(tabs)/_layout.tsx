@@ -1,6 +1,10 @@
 import { Tabs } from "expo-router";
 import { Platform, Text } from "react-native";
 
+export const unstable_settings = {
+  initialRouteName: "index",
+};
+
 export default function TabLayout() {
   return (
     <Tabs

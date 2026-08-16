@@ -23,7 +23,7 @@ export function VoiceCaptureButton({
       <button
         onClick={onPress}
         disabled={isTranscribing}
-        aria-label={isRecording ? "Stop recording" : "Start recording"}
+        aria-label={isRecording ? "Send recording" : "Start listening"}
         className={`relative flex ${dim} items-center justify-center rounded-full text-white shadow-xl transition-all active:scale-95 disabled:opacity-60 ${
           isRecording ? "bg-[#a8412e]" : "bg-[#c8553d] hover:bg-[#b34a35]"
         }`}
@@ -45,8 +45,8 @@ export function VoiceCaptureButton({
           (isTranscribing
             ? "Turning that into tasks and next steps…"
             : isRecording
-              ? "Tap to stop"
-              : "Tap to speak — or press space")}
+              ? "Listening — tap to send, or press space"
+              : "Tap if listening didn’t start")}
       </p>
     </div>
   );
