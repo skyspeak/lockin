@@ -130,17 +130,28 @@ async function completeJsonWithConfig(
   messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
 ): Promise<string> {
   const client = createChatClient(config);
-  const response = await client.chat.completions.create({
-    model: config.model,
-    response_format: { type: "json_object" },
-    messages,
-  });
-
-  const raw = response.choices[0]?.message?.content;
-  if (!raw) {
-    throw new Error("Empty LLM response");
+  try {
+    const response = await client.chat.completions.create({
+      model: config.model,
+      response_format: { type: "json_object" },
+      messages,
+    });
+    const raw = response.choices[0]?.message?.content;
+    if (!raw) {
+      throw new Error("Empty LLM response");
+    }
+    return raw;
+  } catch (err) {
+    const response = await client.chat.completions.create({
+      model: config.model,
+      messages,
+    });
+    const raw = response.choices[0]?.message?.content;
+    if (!raw) {
+      throw err instanceof Error ? err : new Error("Empty LLM response");
+    }
+    return raw;
   }
-  return raw;
 }
 
 function errorMessage(err: unknown): string {

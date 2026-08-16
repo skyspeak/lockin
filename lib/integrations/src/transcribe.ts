@@ -12,11 +12,79 @@ function normalizeGeminiAudioMime(mime: string): string {
   return value;
 }
 
+function geminiModels(): string[] {
+  const preferred = process.env.GEMINI_MODEL?.trim();
+  return [...new Set([preferred, "gemini-3.5-flash", "gemini-2.5-flash"].filter(Boolean))] as string[];
+}
+
 type GeminiGenerateResponse = {
   candidates?: Array<{
-    content?: { parts?: Array<{ text?: string }> };
+    content?: { parts?: Array<{ text?: string; thought?: boolean }> };
   }>;
 };
+
+function transcriptFromGemini(json: GeminiGenerateResponse): string {
+  const parts = json.candidates?.[0]?.content?.parts ?? [];
+  const spoken = parts
+    .filter((part) => !part.thought)
+    .map((part) => part.text ?? "")
+    .join("")
+    .trim();
+  if (spoken) return spoken;
+  return parts
+    .map((part) => part.text ?? "")
+    .join("")
+    .trim();
+}
+
+async function transcribeWithGeminiModel(
+  buffer: Buffer,
+  mime: string,
+  apiKey: string,
+  model: string,
+): Promise<string> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const parts = [
+    {
+      inlineData: {
+        mimeType: normalizeGeminiAudioMime(mime),
+        data: buffer.toString("base64"),
+      },
+    },
+    {
+      text: "Transcribe this audio verbatim. Return only the spoken words, with no commentary or quotes.",
+    },
+  ];
+  const payloads = [
+    {
+      contents: [{ parts }],
+      generationConfig: { thinkingConfig: { thinkingBudget: 0 }, temperature: 0 },
+    },
+    { contents: [{ parts }] },
+  ];
+
+  let lastError = "Gemini transcribe failed";
+  for (const payload of payloads) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      lastError = `Gemini transcribe HTTP ${res.status}: ${(await res.text()).slice(0, 240)}`;
+      continue;
+    }
+    const json = (await res.json()) as GeminiGenerateResponse;
+    const text = transcriptFromGemini(json);
+    if (!text) {
+      lastError = "Empty Gemini transcript";
+      continue;
+    }
+    return text;
+  }
+
+  throw new Error(lastError);
+}
 
 async function transcribeWithGemini(buffer: Buffer, mime: string): Promise<string> {
   const config = resolveGeminiConfig();
@@ -24,45 +92,16 @@ async function transcribeWithGemini(buffer: Buffer, mime: string): Promise<strin
     throw new Error("Gemini API key not set");
   }
 
-  const model = config.model;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [
-        {
-          parts: [
-            {
-              inline_data: {
-                mime_type: normalizeGeminiAudioMime(mime),
-                data: buffer.toString("base64"),
-              },
-            },
-            {
-              text: "Transcribe this audio verbatim. Return only the spoken words, with no commentary or quotes.",
-            },
-          ],
-        },
-      ],
-    }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Gemini transcribe HTTP ${res.status}: ${body.slice(0, 240)}`);
+  const errors: string[] = [];
+  for (const model of geminiModels()) {
+    try {
+      return await transcribeWithGeminiModel(buffer, mime, config.apiKey, model);
+    } catch (err) {
+      errors.push(`${model}: ${errorMessage(err)}`);
+    }
   }
 
-  const json = (await res.json()) as GeminiGenerateResponse;
-  const text =
-    json.candidates?.[0]?.content?.parts
-      ?.map((part) => part.text ?? "")
-      .join("")
-      .trim() ?? "";
-  if (!text) {
-    throw new Error("Empty Gemini transcript");
-  }
-  return text;
+  throw new Error(errors.join("; "));
 }
 
 async function transcribeWithOpenAICompat(

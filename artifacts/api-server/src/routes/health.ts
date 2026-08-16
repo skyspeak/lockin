@@ -1,11 +1,14 @@
 import { Router, type IRouter } from "express";
-import { HealthCheckResponse } from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
 router.get("/healthz", (_req, res) => {
-  const data = HealthCheckResponse.parse({ status: "ok" });
-  res.json(data);
+  res.json({
+    status: "ok",
+    gemini: Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY),
+    openrouter: Boolean(process.env.OPENROUTER_API_KEY),
+    model: process.env.GEMINI_MODEL || "gemini-3.5-flash",
+  });
 });
 
 export default router;

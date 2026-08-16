@@ -72,10 +72,15 @@ function fallbackAction(transcript: string): ExtractedAction {
 
 export async function extractActionsFromThought(transcript: string): Promise<ExtractedAction[]> {
   const clipped = transcript.trim().slice(0, MAX_TRANSCRIPT_CHARS);
-  const raw = await chatCompletionJson([
-    { role: "system", content: SYSTEM_PROMPT },
-    { role: "user", content: `Transcript:\n${clipped}` },
-  ]);
+  let raw: string;
+  try {
+    raw = await chatCompletionJson([
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content: `Transcript:\n${clipped}` },
+    ]);
+  } catch {
+    return [fallbackAction(clipped)];
+  }
 
   const parsed = extractSchema.safeParse(parseJsonObject(raw));
   if (!parsed.success) {

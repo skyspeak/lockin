@@ -1,7 +1,6 @@
 import { Router } from "express";
 import { db, thoughtsTable, actionsTable } from "@workspace/db";
 import { transcribeAudio, extractActionsFromThought } from "@workspace/integrations";
-import { CaptureThoughtResponse } from "@workspace/api-zod";
 import { seedFollowUpPlanFromExtract } from "../services/followUpPlan";
 import {
   audioLimiter,
@@ -12,6 +11,11 @@ import {
 
 const router = Router();
 router.use(audioLimiter);
+
+function publicCaptureError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : "Capture failed";
+  return raw.replace(/key=[^&\s"']+/gi, "key=***").slice(0, 220);
+}
 
 router.post("/", audioUpload.single("audio"), async (req, res) => {
   if (!req.file) {
@@ -81,17 +85,16 @@ router.post("/", audioUpload.single("audio"), async (req, res) => {
       }),
     );
 
-    const body = CaptureThoughtResponse.parse({
+    return res.json({
       transcript,
       actions: inserted,
     });
-    return res.json(body);
   } catch (err) {
     req.log.error(
       { err: err instanceof Error ? err.message : "unknown" },
       "capture failed",
     );
-    return res.status(500).json({ error: "Capture failed" });
+    return res.status(500).json({ error: publicCaptureError(err) });
   }
 });
 

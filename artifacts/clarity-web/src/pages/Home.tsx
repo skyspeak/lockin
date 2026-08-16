@@ -44,11 +44,13 @@ export default function Home() {
       };
       mr.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(chunks.current, { type: mr.mimeType || "audio/webm" });
+        const blobType = mr.mimeType || "audio/webm";
+        const blob = new Blob(chunks.current, { type: blobType });
         setIsTranscribing(true);
         try {
           const form = new FormData();
-          form.append("audio", blob, "audio.webm");
+          const filename = blobType.includes("mp4") || blobType.includes("m4a") ? "audio.m4a" : "audio.webm";
+          form.append("audio", blob, filename);
           const res = await fetch(`${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/capture`, {
             method: "POST",
             body: form,
