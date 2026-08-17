@@ -10,6 +10,7 @@ export default function Login({ onLogin }: LoginProps) {
   const [mode, setMode] = useState<Mode>("signup");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -18,6 +19,10 @@ export default function Login({ onLogin }: LoginProps) {
     const trimmedEmail = email.trim();
     if (!trimmedEmail || !password) {
       setError("Email and password are required");
+      return;
+    }
+    if (mode === "signup" && !inviteCode.trim()) {
+      setError("Invite code is required");
       return;
     }
     if (mode === "signup" && password.length < 8) {
@@ -31,7 +36,11 @@ export default function Login({ onLogin }: LoginProps) {
       const res = await fetch(path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: trimmedEmail, password }),
+        body: JSON.stringify(
+          mode === "signup"
+            ? { email: trimmedEmail, password, inviteCode: inviteCode.trim() }
+            : { email: trimmedEmail, password },
+        ),
       });
       const body = (await res.json().catch(() => ({}))) as { token?: string; error?: string };
       if (!res.ok) {
@@ -61,7 +70,7 @@ export default function Login({ onLogin }: LoginProps) {
         </h1>
         <p className="text-sm text-[#7a716b] text-center mb-8">
           {mode === "signup"
-            ? "Create an account to capture thoughts and keep your own task list."
+            ? "Create an account with an invite code to keep your own task list."
             : "Sign in to your Clarity account."}
         </p>
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
@@ -88,6 +97,19 @@ export default function Login({ onLogin }: LoginProps) {
             autoComplete={mode === "signup" ? "new-password" : "current-password"}
             className="w-full rounded-xl border border-[#ebe5dd] bg-white px-4 py-3 text-sm text-[#1a1715] outline-none focus:border-[#c8553d] transition-colors"
           />
+          {mode === "signup" && (
+            <input
+              type="password"
+              value={inviteCode}
+              onChange={(e) => {
+                setInviteCode(e.target.value);
+                setError("");
+              }}
+              placeholder="Invite code"
+              autoComplete="off"
+              className="w-full rounded-xl border border-[#ebe5dd] bg-white px-4 py-3 text-sm text-[#1a1715] outline-none focus:border-[#c8553d] transition-colors"
+            />
+          )}
           {error && <p className="text-xs text-red-500">{error}</p>}
           <button
             type="submit"

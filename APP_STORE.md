@@ -20,11 +20,11 @@ Apple team (from earlier builds): `2T8UT7AXMD`
 - `POST /api/auth/signup` and `POST /api/auth/login` return a 30-day JWT.
 - Capture, tasks, and refine stay on the same Bearer header — the token is now a user JWT instead of the shared `API_SECRET`.
 - The old `API_SECRET` still works as a Bearer token (your previous personal data).
-- Web and iPhone show **Create account / Sign in**, not “paste API key”.
+- Web and iPhone show **Create account / Sign in**. Signup also asks for an **invite code**, which is the Railway `API_SECRET`.
 - **Delete account** is in Settings (iPhone) and the account bar (web). Apple requires this.
 - Privacy Policy and Terms are public pages (needed for App Store Connect).
 
-Your existing tasks are **not** moved automatically. If you want them on your new email account, set `CLAIM_LEGACY_EMAIL` (step 2) **before** you sign up with that email.
+Existing tasks from the old shared API key stay on that legacy identity. New signups start with an empty task list.
 
 ---
 
@@ -45,7 +45,7 @@ Optional: confirm signup is live:
 ```bash
 curl -sS -X POST https://workspaceapi-server-production-2b2a.up.railway.app/api/auth/signup \
   -H 'Content-Type: application/json' \
-  -d '{"email":"you@example.com","password":"at-least-8"}'
+  -d '{"email":"you@example.com","password":"at-least-8","inviteCode":"YOUR_API_SECRET"}'
 ```
 
 You should get `{ "token": "...", "user": { "id": "...", "email": "..." } }`.
@@ -56,15 +56,12 @@ You should get `{ "token": "...", "user": { "id": "...", "email": "..." } }`.
 
 Keep everything you already have (`DATABASE_URL`, `API_SECRET`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `NODE_ENV=production`).
 
-Add:
+The invite code for signup **is** `API_SECRET`. Share that value only with people you want to let in. Signing in later only needs email and password.
 
 | Variable | Required | What it does |
 |---|---|---|
-| `CLAIM_LEGACY_EMAIL` | Only if you want your old tasks | Exact email you will use to sign up. On that **first** signup, existing tasks (the old shared-key data) move onto that account. Remove the variable after you sign up. |
 | `JWT_SECRET` | Optional | 32+ random characters to sign login tokens. If unset, `API_SECRET` is used. Setting a dedicated secret is better. |
 | `CORS_ORIGIN` | If the web app is ever hosted on another domain | Comma-separated origins. Same-origin Railway web UI does not need this. |
-
-Do **not** put `API_SECRET` in the iPhone app. Users never see it.
 
 The `users` table is created automatically on API boot (`CREATE TABLE IF NOT EXISTS users`). You do not need a manual `drizzle-kit push` unless you prefer to run it against `DATABASE_PUBLIC_URL`.
 
@@ -151,10 +148,10 @@ Tips: use a light home-screen-adjacent look, no debug banners, no TestFlight wat
 ### Review notes (paste this)
 
 ```
-Clarity is a voice-first task app. Reviewers can create a new account in the app
-(email + password, 8+ characters). No invitation code is required.
+Clarity is a voice-first task app. New accounts require an invite code.
+Please use the demo account below instead of creating a new one.
 
-Demo account (if you prefer not to create one):
+Demo account:
 Email: [create this on production before submit]
 Password: [strong password]
 
@@ -238,7 +235,7 @@ npx eas-cli@latest submit --platform android --profile production
 ## 9. Local smoke test before you submit
 
 1. Railway deploy of this branch is live.
-2. Web: open the Railway URL → Create account → speak → see a task.
+2. Web: open the Railway URL → Create account (email, password, invite code = `API_SECRET`) → speak → see a task.
 3. Web: Delete account, confirm you are signed out and cannot log in.
 4. iPhone TestFlight build from this branch → Create account → Speak auto-listens → send.
 5. Settings → Privacy Policy opens. Settings → Delete account works.

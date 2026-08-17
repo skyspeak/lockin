@@ -11,7 +11,7 @@ import {
   thoughtsTable,
   followUpPlansTable,
 } from "@workspace/db";
-import { requireAuth, DERIVED_USER_ID } from "../middlewares/auth";
+import { requireAuth, isInviteCode } from "../middlewares/auth";
 import { signAccessToken } from "../lib/tokens";
 
 const router = Router();
@@ -26,6 +26,10 @@ const credentialsSchema = z.object({
   password: z.string().min(8).max(128),
 });
 
+const signupSchema = credentialsSchema.extend({
+  inviteCode: z.string().trim().min(1).max(256),
+});
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
@@ -34,32 +38,21 @@ const authLimiter = rateLimit({
   message: { error: "Too many attempts. Please wait a few minutes." },
 });
 
-async function claimLegacyData(userId: string, email: string): Promise<void> {
-  const claimEmail = process.env.CLAIM_LEGACY_EMAIL?.trim().toLowerCase();
-  if (!claimEmail || claimEmail !== email) return;
-
-  await db
-    .update(actionsTable)
-    .set({ userId })
-    .where(eq(actionsTable.userId, DERIVED_USER_ID));
-  await db
-    .update(thoughtsTable)
-    .set({ userId })
-    .where(eq(thoughtsTable.userId, DERIVED_USER_ID));
-  await db
-    .update(followUpPlansTable)
-    .set({ userId })
-    .where(eq(followUpPlansTable.userId, DERIVED_USER_ID));
-}
-
 router.post("/signup", authLimiter, async (req, res) => {
-  const parsed = credentialsSchema.safeParse(req.body);
+  const parsed = signupSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: "Enter a valid email and a password of at least 8 characters." });
+    res.status(400).json({
+      error: "Enter a valid email, a password of at least 8 characters, and an invite code.",
+    });
     return;
   }
 
-  const { email, password } = parsed.data;
+  const { email, password, inviteCode } = parsed.data;
+  if (!isInviteCode(inviteCode)) {
+    res.status(403).json({ error: "Invite code is invalid." });
+    return;
+  }
+
   const existing = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, email)).limit(1);
   if (existing.length > 0) {
     res.status(409).json({ error: "An account with that email already exists." });
@@ -69,7 +62,6 @@ router.post("/signup", authLimiter, async (req, res) => {
   const id = randomUUID();
   const passwordHash = await bcrypt.hash(password, 12);
   await db.insert(usersTable).values({ id, email, passwordHash });
-  await claimLegacyData(id, email);
 
   const token = await signAccessToken(id);
   res.status(201).json({ token, user: { id, email } });

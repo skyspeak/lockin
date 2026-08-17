@@ -14,6 +14,7 @@ export function AuthScreen({ onAuth }: AuthScreenProps) {
   const [mode, setMode] = useState<Mode>("signup");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -27,6 +28,10 @@ export function AuthScreen({ onAuth }: AuthScreenProps) {
       setError("Email and password are required");
       return;
     }
+    if (mode === "signup" && !inviteCode.trim()) {
+      setError("Invite code is required");
+      return;
+    }
     if (mode === "signup" && password.length < 8) {
       setError("Password must be at least 8 characters");
       return;
@@ -38,7 +43,11 @@ export function AuthScreen({ onAuth }: AuthScreenProps) {
       const res = await fetch(`${getApiBasePath(serverUrl)}${path}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: trimmedEmail, password }),
+        body: JSON.stringify(
+          mode === "signup"
+            ? { email: trimmedEmail, password, inviteCode: inviteCode.trim() }
+            : { email: trimmedEmail, password },
+        ),
       });
       const body = (await res.json().catch(() => ({}))) as { token?: string; error?: string };
       if (!res.ok) {
@@ -64,7 +73,7 @@ export function AuthScreen({ onAuth }: AuthScreenProps) {
         <Text style={styles.title}>Clarity</Text>
         <Text style={styles.subtitle}>
           {mode === "signup"
-            ? "Create an account to capture thoughts and keep your own tasks."
+            ? "Create an account with an invite code to keep your own tasks."
             : "Sign in to your account."}
         </Text>
 
@@ -100,9 +109,31 @@ export function AuthScreen({ onAuth }: AuthScreenProps) {
           autoCorrect={false}
           textContentType={mode === "signup" ? "newPassword" : "password"}
           autoComplete={mode === "signup" ? "password-new" : "password"}
-          onSubmitEditing={() => void handleSubmit()}
           returnKeyType="done"
         />
+
+        {mode === "signup" ? (
+          <>
+            <Text style={styles.label}>Invite code</Text>
+            <TextInput
+              style={styles.input}
+              value={inviteCode}
+              onChangeText={(t) => {
+                setInviteCode(t);
+                setError("");
+              }}
+              placeholder="Invite code"
+              placeholderTextColor="#b0a79f"
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              textContentType="oneTimeCode"
+              autoComplete="off"
+              onSubmitEditing={() => void handleSubmit()}
+              returnKeyType="done"
+            />
+          </>
+        ) : null}
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <Pressable

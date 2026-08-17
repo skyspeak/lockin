@@ -30,6 +30,10 @@ function secretsEqual(provided: string, expected: string): boolean {
   return timingSafeEqual(a, b);
 }
 
+export function isInviteCode(code: string): boolean {
+  return secretsEqual(code.trim(), API_SECRET);
+}
+
 export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
   const authHeader = req.headers.authorization;
 
