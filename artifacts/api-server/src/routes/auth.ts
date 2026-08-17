@@ -38,6 +38,19 @@ const authLimiter = rateLimit({
   message: { error: "Too many attempts. Please wait a few minutes." },
 });
 
+router.post("/invite", authLimiter, async (req, res) => {
+  const parsed = z.object({ inviteCode: z.string().trim().min(1).max(256) }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Enter your special invite code." });
+    return;
+  }
+  if (!isInviteCode(parsed.data.inviteCode)) {
+    res.status(403).json({ error: "That invite code is not valid." });
+    return;
+  }
+  res.json({ ok: true });
+});
+
 router.post("/signup", authLimiter, async (req, res) => {
   const parsed = signupSchema.safeParse(req.body);
   if (!parsed.success) {

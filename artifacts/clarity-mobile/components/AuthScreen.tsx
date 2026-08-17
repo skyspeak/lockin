@@ -7,29 +7,56 @@ interface AuthScreenProps {
   onAuth: (serverUrl: string, token: string) => void;
 }
 
+type Step = "invite" | "account";
 type Mode = "signin" | "signup";
 
 export function AuthScreen({ onAuth }: AuthScreenProps) {
   const serverUrl = resolveDefaultApiOrigin();
+  const [step, setStep] = useState<Step>("invite");
   const [mode, setMode] = useState<Mode>("signup");
+  const [inviteCode, setInviteCode] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const handleSubmit = async () => {
-    const trimmedEmail = email.trim();
-    if (!serverUrl) {
+  const apiBase = serverUrl ? getApiBasePath(serverUrl) : "";
+
+  const checkInvite = async () => {
+    const code = inviteCode.trim();
+    if (!serverUrl || !apiBase) {
       setError("This build is missing the Clarity server URL.");
       return;
     }
-    if (!trimmedEmail || !password) {
-      setError("Email and password are required");
+    if (!code) {
+      setError("Input your special invite code.");
       return;
     }
-    if (mode === "signup" && !inviteCode.trim()) {
-      setError("Invite code is required");
+    setBusy(true);
+    try {
+      const res = await fetch(`${apiBase}/auth/invite`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inviteCode: code }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setError(body.error || "That invite code is not valid.");
+        return;
+      }
+      setError("");
+      setStep("account");
+    } catch {
+      setError("Could not reach Clarity. Check your network.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitAccount = async () => {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !password) {
+      setError("Email and password are required");
       return;
     }
     if (mode === "signup" && password.length < 8) {
@@ -40,7 +67,7 @@ export function AuthScreen({ onAuth }: AuthScreenProps) {
     setBusy(true);
     try {
       const path = mode === "signup" ? "/auth/signup" : "/auth/login";
-      const res = await fetch(`${getApiBasePath(serverUrl)}${path}`, {
+      const res = await fetch(`${apiBase}${path}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
@@ -71,50 +98,11 @@ export function AuthScreen({ onAuth }: AuthScreenProps) {
       <View style={styles.inner}>
         <Text style={styles.kicker}>VOICE FIRST</Text>
         <Text style={styles.title}>Clarity</Text>
-        <Text style={styles.subtitle}>
-          {mode === "signup"
-            ? "Create an account with an invite code to keep your own tasks."
-            : "Sign in to your account."}
-        </Text>
 
-        <Text style={styles.label}>Email</Text>
-        <TextInput
-          style={styles.input}
-          value={email}
-          onChangeText={(t) => {
-            setEmail(t);
-            setError("");
-          }}
-          placeholder="you@email.com"
-          placeholderTextColor="#b0a79f"
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="email-address"
-          textContentType="username"
-          autoComplete="email"
-        />
-
-        <Text style={styles.label}>Password</Text>
-        <TextInput
-          style={styles.input}
-          value={password}
-          onChangeText={(t) => {
-            setPassword(t);
-            setError("");
-          }}
-          placeholder={mode === "signup" ? "At least 8 characters" : "Password"}
-          placeholderTextColor="#b0a79f"
-          secureTextEntry
-          autoCapitalize="none"
-          autoCorrect={false}
-          textContentType={mode === "signup" ? "newPassword" : "password"}
-          autoComplete={mode === "signup" ? "password-new" : "password"}
-          returnKeyType="done"
-        />
-
-        {mode === "signup" ? (
+        {step === "invite" ? (
           <>
-            <Text style={styles.label}>Invite code</Text>
+            <Text style={styles.subtitle}>Input your special invite code.</Text>
+            <Text style={styles.label}>Special invite code</Text>
             <TextInput
               style={styles.input}
               value={inviteCode}
@@ -122,41 +110,86 @@ export function AuthScreen({ onAuth }: AuthScreenProps) {
                 setInviteCode(t);
                 setError("");
               }}
-              placeholder="Invite code"
+              placeholder="Special invite code"
               placeholderTextColor="#b0a79f"
               secureTextEntry
               autoCapitalize="none"
               autoCorrect={false}
-              textContentType="oneTimeCode"
               autoComplete="off"
-              onSubmitEditing={() => void handleSubmit()}
+              onSubmitEditing={() => void checkInvite()}
               returnKeyType="done"
             />
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+            <Pressable
+              style={[styles.button, busy ? styles.buttonDisabled : null]}
+              onPress={() => void checkInvite()}
+              disabled={busy}
+            >
+              <Text style={styles.buttonText}>{busy ? "Please wait…" : "Continue"}</Text>
+            </Pressable>
           </>
-        ) : null}
-
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-        <Pressable
-          style={[styles.button, busy ? styles.buttonDisabled : null]}
-          onPress={() => void handleSubmit()}
-          disabled={busy}
-        >
-          <Text style={styles.buttonText}>
-            {busy ? "Please wait…" : mode === "signup" ? "Create account" : "Sign in"}
-          </Text>
-        </Pressable>
-
-        <Pressable
-          onPress={() => {
-            setMode(mode === "signup" ? "signin" : "signup");
-            setError("");
-          }}
-          style={styles.switchMode}
-        >
-          <Text style={styles.switchModeText}>
-            {mode === "signup" ? "Already have an account? Sign in" : "Need an account? Create one"}
-          </Text>
-        </Pressable>
+        ) : (
+          <>
+            <Text style={styles.subtitle}>
+              {mode === "signup" ? "Create your account." : "Sign in to your account."}
+            </Text>
+            <Text style={styles.label}>Email</Text>
+            <TextInput
+              style={styles.input}
+              value={email}
+              onChangeText={(t) => {
+                setEmail(t);
+                setError("");
+              }}
+              placeholder="you@email.com"
+              placeholderTextColor="#b0a79f"
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              textContentType="username"
+              autoComplete="email"
+            />
+            <Text style={styles.label}>Password</Text>
+            <TextInput
+              style={styles.input}
+              value={password}
+              onChangeText={(t) => {
+                setPassword(t);
+                setError("");
+              }}
+              placeholder={mode === "signup" ? "At least 8 characters" : "Password"}
+              placeholderTextColor="#b0a79f"
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              textContentType={mode === "signup" ? "newPassword" : "password"}
+              autoComplete={mode === "signup" ? "password-new" : "password"}
+              onSubmitEditing={() => void submitAccount()}
+              returnKeyType="done"
+            />
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+            <Pressable
+              style={[styles.button, busy ? styles.buttonDisabled : null]}
+              onPress={() => void submitAccount()}
+              disabled={busy}
+            >
+              <Text style={styles.buttonText}>
+                {busy ? "Please wait…" : mode === "signup" ? "Create account" : "Sign in"}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                setMode(mode === "signup" ? "signin" : "signup");
+                setError("");
+              }}
+              style={styles.switchMode}
+            >
+              <Text style={styles.switchModeText}>
+                {mode === "signup" ? "Already have an account? Sign in" : "Need an account? Create one"}
+              </Text>
+            </Pressable>
+          </>
+        )}
 
         <Text style={styles.legal}>
           By continuing you agree to the Terms and Privacy Policy on the Clarity website.

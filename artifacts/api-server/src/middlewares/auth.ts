@@ -31,7 +31,14 @@ function secretsEqual(provided: string, expected: string): boolean {
 }
 
 export function isInviteCode(code: string): boolean {
-  return secretsEqual(code.trim(), API_SECRET);
+  const trimmed = code.trim();
+  if (!trimmed) return false;
+  if (secretsEqual(trimmed, API_SECRET)) return true;
+  const extras = (process.env.INVITE_CODES ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  return extras.some((extra) => secretsEqual(trimmed, extra));
 }
 
 export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {

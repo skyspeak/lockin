@@ -20,7 +20,7 @@ Apple team (from earlier builds): `2T8UT7AXMD`
 - `POST /api/auth/signup` and `POST /api/auth/login` return a 30-day JWT.
 - Capture, tasks, and refine stay on the same Bearer header — the token is now a user JWT instead of the shared `API_SECRET`.
 - The old `API_SECRET` still works as a Bearer token (your previous personal data).
-- Web and iPhone show **Create account / Sign in**. Signup also asks for an **invite code**, which is the Railway `API_SECRET`.
+- Web and iPhone open on **Input your special invite code.** Your code is Railway `API_SECRET`. Extra codes can be added in `INVITE_CODES` and handed out off-platform.
 - **Delete account** is in Settings (iPhone) and the account bar (web). Apple requires this.
 - Privacy Policy and Terms are public pages (needed for App Store Connect).
 
@@ -56,10 +56,11 @@ You should get `{ "token": "...", "user": { "id": "...", "email": "..." } }`.
 
 Keep everything you already have (`DATABASE_URL`, `API_SECRET`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `NODE_ENV=production`).
 
-The invite code for signup **is** `API_SECRET`. Share that value only with people you want to let in. Signing in later only needs email and password.
+The first screen asks for a **special invite code**. Yours is `API_SECRET`. To hand out other codes without sharing that secret, set `INVITE_CODES` to a comma-separated list. After the code is accepted, people create an account or sign in.
 
 | Variable | Required | What it does |
 |---|---|---|
+| `INVITE_CODES` | Optional | Extra invite codes, comma-separated. `API_SECRET` always works too. |
 | `JWT_SECRET` | Optional | 32+ random characters to sign login tokens. If unset, `API_SECRET` is used. Setting a dedicated secret is better. |
 | `CORS_ORIGIN` | If the web app is ever hosted on another domain | Comma-separated origins. Same-origin Railway web UI does not need this. |
 
@@ -235,7 +236,7 @@ npx eas-cli@latest submit --platform android --profile production
 ## 9. Local smoke test before you submit
 
 1. Railway deploy of this branch is live.
-2. Web: open the Railway URL → Create account (email, password, invite code = `API_SECRET`) → speak → see a task.
+2. Web: open the Railway URL → enter your special invite code (`API_SECRET`) → create account → speak → see a task.
 3. Web: Delete account, confirm you are signed out and cannot log in.
 4. iPhone TestFlight build from this branch → Create account → Speak auto-listens → send.
 5. Settings → Privacy Policy opens. Settings → Delete account works.
