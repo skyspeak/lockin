@@ -1,4 +1,5 @@
-import { SafeAreaView, StyleSheet } from "react-native";
+import { StyleSheet } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { VoiceCaptureHero, useVoiceCapture } from "@/components/VoiceCapture";
 
 export default function SpeakScreen() {

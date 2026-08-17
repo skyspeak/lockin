@@ -344,10 +344,10 @@ export default function Home() {
               {lastCaptured.map((item, index) => (
                 <li key={`${index}-${item.title}`}>
                   <p className="text-sm font-medium text-[#1a1715] leading-snug">{item.title}</p>
-                  {item.nextSteps.length > 0 && (
+                  {Array.isArray(item.nextSteps) && item.nextSteps.length > 0 && (
                     <ol className="mt-1 ml-4 list-decimal space-y-0.5">
-                      {item.nextSteps.map((step) => (
-                        <li key={step} className="text-xs text-[#7a716b] leading-snug">
+                      {item.nextSteps.map((step, stepIndex) => (
+                        <li key={`${index}-step-${stepIndex}`} className="text-xs text-[#7a716b] leading-snug">
                           {step}
                         </li>
                       ))}

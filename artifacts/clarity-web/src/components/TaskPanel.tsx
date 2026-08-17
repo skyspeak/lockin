@@ -121,10 +121,10 @@ export function TaskPanel({
                             {CATEGORY_LABELS[group.category] ?? group.category}
                           </span>
                         </div>
-                        {(a.nextSteps ?? []).length > 0 && (
+                        {Array.isArray(a.nextSteps) && a.nextSteps.length > 0 && (
                           <ol className="mb-3 ml-4 list-decimal space-y-1">
-                            {(a.nextSteps ?? []).map((step) => (
-                              <li key={step} className="text-xs text-[#7a716b] leading-snug">
+                            {a.nextSteps.map((step, index) => (
+                              <li key={`${a.id}-step-${index}`} className="text-xs text-[#7a716b] leading-snug">
                                 {step}
                               </li>
                             ))}

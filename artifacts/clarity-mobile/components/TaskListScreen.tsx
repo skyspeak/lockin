@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { Alert, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, RefreshControl, SectionList, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { SectionList, Swipeable } from "react-native-gesture-handler";
+import Swipeable from "react-native-gesture-handler/Swipeable";
 import * as Haptics from "expo-haptics";
 import {
   AudioModule,
@@ -70,7 +70,7 @@ export function TaskListScreen() {
   const apiKey = useApiKey();
   const queryClient = useQueryClient();
   const queueUrl = getGetActionQueueUrl();
-  const { data, refetch, isLoading } = useGetActionQueue();
+  const { data, refetch, isLoading, isError } = useGetActionQueue();
   const updateAction = useUpdateAction();
   const deleteAction = useDeleteAction();
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
@@ -266,7 +266,11 @@ export function TaskListScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.accent} />
         }
         ListEmptyComponent={
-          !isLoading ? (
+          isError ? (
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>Couldn't load tasks. Pull down to try again.</Text>
+            </View>
+          ) : !isLoading ? (
             <View style={styles.empty}>
               <Text style={styles.emptyText}>No tasks yet. Go to Speak and say something.</Text>
             </View>
@@ -317,8 +321,8 @@ export function TaskListScreen() {
                       </Text>
                     </View>
                   </View>
-                  {(item.nextSteps ?? []).map((step) => (
-                    <Text key={step} style={styles.nextStep}>
+                  {(Array.isArray(item.nextSteps) ? item.nextSteps : []).map((step, index) => (
+                    <Text key={`${item.id}-step-${index}`} style={styles.nextStep}>
                       {`• ${step}`}
                     </Text>
                   ))}

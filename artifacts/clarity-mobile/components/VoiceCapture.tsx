@@ -130,8 +130,8 @@ export function useVoiceCapture() {
         }
         if (res.status === 401) {
           Alert.alert(
-            "API key rejected",
-            "The key does not match API_SECRET on the Railway API service.",
+            "Session expired",
+            "Log out in Settings, then sign in again.",
           );
         } else if (res.status === 415 || /unsupported audio/i.test(detail)) {
           Alert.alert("Couldn't read that recording", "Try speaking again for a couple of seconds.");
@@ -281,8 +281,8 @@ export function VoiceCaptureHero({
           {lastCaptured.map((item, index) => (
             <View key={`${index}-${item.title}`} style={styles.capturedItem}>
               <Text style={styles.capturedText}>{item.title}</Text>
-              {item.nextSteps.map((step) => (
-                <Text key={step} style={styles.capturedStep}>
+              {(Array.isArray(item.nextSteps) ? item.nextSteps : []).map((step, stepIndex) => (
+                <Text key={`${index}-step-${stepIndex}`} style={styles.capturedStep}>
                   {`• ${step}`}
                 </Text>
               ))}
