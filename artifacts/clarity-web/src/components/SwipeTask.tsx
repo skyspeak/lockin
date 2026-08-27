@@ -19,7 +19,7 @@ export function SwipeTask({ onDone, onDelete, children }: SwipeTaskProps) {
   return (
     <div className="relative overflow-hidden rounded-2xl">
       <div className="pointer-events-none absolute inset-0 flex">
-        <div className="flex flex-1 items-center bg-[#5d7a4a] px-4 text-sm font-semibold text-white">
+        <div className="flex flex-1 items-center bg-[#2aa89c] px-4 text-sm font-semibold text-white">
           Done
         </div>
         <div className="flex flex-1 items-center justify-end bg-[#c0392b] px-4 text-sm font-semibold text-white">

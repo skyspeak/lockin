@@ -1,4 +1,4 @@
-# Publish Clarity with user accounts
+# Publish Lock In with user accounts
 
 This branch adds email/password signup so anyone can create their own account. Tasks stay private to that account. Use this checklist to ship it to Railway, then the App Store.
 
@@ -83,7 +83,7 @@ You do **not** need Sign in with Apple. That is only required if you also offer 
 
 1. App Store Connect → **My Apps** → **+** → **New App**.
 2. Platform: iOS.
-3. Name: **Clarity** (or another name if Clarity is taken — the name must be unique on the store).
+3. Name: **Lock In** (or another name if Lock In is taken — the name must be unique on the store).
 4. Primary language: English.
 5. Bundle ID: **com.skyspeak.lockin** (create the identifier in the Developer portal first if it is not listed).
 6. SKU: `clarity` (internal; not shown to users).
@@ -113,11 +113,11 @@ Do **not** check tracking. There is no ATT prompt in the app.
 
 ### Version / What’s New
 
-Example: `Create your own Clarity account and keep tasks private.`
+Example: `Create your own Lock In account and keep tasks private.`
 
 ### Description (draft)
 
-Clarity is a voice-first capture app. Open it, speak a thought, and tap to send. Clarity turns what you said into tasks with next steps, tagged for work, family, hobbies, or extracurriculars.
+Lock In is a voice-first capture app. Open it, speak a thought, and tap to send. Lock In turns what you said into tasks with next steps, tagged for work, family, hobbies, or extracurriculars.
 
 - Create an account with your email
 - Speak to capture; tap to send
@@ -149,7 +149,7 @@ Tips: use a light home-screen-adjacent look, no debug banners, no TestFlight wat
 ### Review notes (paste this)
 
 ```
-Clarity is a voice-first task app. New accounts require an invite code.
+Lock In is a voice-first task app. New accounts require an invite code.
 Please use the demo account below instead of creating a new one.
 
 Demo account:

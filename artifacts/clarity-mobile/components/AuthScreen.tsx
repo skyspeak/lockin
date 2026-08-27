@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Image } from "expo-image";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getApiBasePath, resolveDefaultApiOrigin } from "@/constants/api";
 
@@ -25,7 +26,7 @@ export function AuthScreen({ onAuth }: AuthScreenProps) {
   const checkInvite = async () => {
     const code = inviteCode.trim();
     if (!serverUrl || !apiBase) {
-      setError("This build is missing the Clarity server URL.");
+      setError("This build is missing the Lock In server URL.");
       return;
     }
     if (!code) {
@@ -47,7 +48,7 @@ export function AuthScreen({ onAuth }: AuthScreenProps) {
       setError("");
       setStep("account");
     } catch {
-      setError("Could not reach Clarity. Check your network.");
+      setError("Could not reach Lock In. Check your network.");
     } finally {
       setBusy(false);
     }
@@ -87,7 +88,7 @@ export function AuthScreen({ onAuth }: AuthScreenProps) {
       }
       onAuth(serverUrl, body.token);
     } catch {
-      setError("Could not reach Clarity. Check your network.");
+      setError("Could not reach Lock In. Check your network.");
     } finally {
       setBusy(false);
     }
@@ -96,13 +97,20 @@ export function AuthScreen({ onAuth }: AuthScreenProps) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.inner}>
-        <Text style={styles.kicker}>VOICE FIRST</Text>
-        <Text style={styles.title}>Clarity</Text>
+        <Image
+          source={require("../assets/images/mascot.png")}
+          style={styles.mascot}
+          contentFit="contain"
+          recyclingKey="lockin-mascot"
+          cachePolicy="memory-disk"
+        />
+        <Text style={styles.kicker}>dump it. lock it.</Text>
+        <Text style={styles.title}>Lock In</Text>
 
         {step === "invite" ? (
           <>
-            <Text style={styles.subtitle}>Input your special invite code.</Text>
-            <Text style={styles.label}>Special invite code</Text>
+            <Text style={styles.subtitle}>Got an invite? Slip it in.</Text>
+            <Text style={styles.label}>Invite code</Text>
             <TextInput
               style={styles.input}
               value={inviteCode}
@@ -110,8 +118,8 @@ export function AuthScreen({ onAuth }: AuthScreenProps) {
                 setInviteCode(t);
                 setError("");
               }}
-              placeholder="Special invite code"
-              placeholderTextColor="#b0a79f"
+              placeholder="your secret handshake"
+              placeholderTextColor="#c9a99a"
               secureTextEntry
               autoCapitalize="none"
               autoCorrect={false}
@@ -125,13 +133,13 @@ export function AuthScreen({ onAuth }: AuthScreenProps) {
               onPress={() => void checkInvite()}
               disabled={busy}
             >
-              <Text style={styles.buttonText}>{busy ? "Please wait…" : "Continue"}</Text>
+              <Text style={styles.buttonText}>{busy ? "Checking…" : "Let’s go"}</Text>
             </Pressable>
           </>
         ) : (
           <>
             <Text style={styles.subtitle}>
-              {mode === "signup" ? "Create your account." : "Sign in to your account."}
+              {mode === "signup" ? "Make your corner of Lock In." : "Welcome back. Let’s lock in."}
             </Text>
             <Text style={styles.label}>Email</Text>
             <TextInput
@@ -142,7 +150,7 @@ export function AuthScreen({ onAuth }: AuthScreenProps) {
                 setError("");
               }}
               placeholder="you@email.com"
-              placeholderTextColor="#b0a79f"
+              placeholderTextColor="#c9a99a"
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="email-address"
@@ -158,7 +166,7 @@ export function AuthScreen({ onAuth }: AuthScreenProps) {
                 setError("");
               }}
               placeholder={mode === "signup" ? "At least 8 characters" : "Password"}
-              placeholderTextColor="#b0a79f"
+              placeholderTextColor="#c9a99a"
               secureTextEntry
               autoCapitalize="none"
               autoCorrect={false}
@@ -174,7 +182,7 @@ export function AuthScreen({ onAuth }: AuthScreenProps) {
               disabled={busy}
             >
               <Text style={styles.buttonText}>
-                {busy ? "Please wait…" : mode === "signup" ? "Create account" : "Sign in"}
+                {busy ? "One sec…" : mode === "signup" ? "Create account" : "Sign in"}
               </Text>
             </Pressable>
             <Pressable
@@ -192,7 +200,7 @@ export function AuthScreen({ onAuth }: AuthScreenProps) {
         )}
 
         <Text style={styles.legal}>
-          By continuing you agree to the Terms and Privacy Policy on the Clarity website.
+          By continuing you agree to the Terms and Privacy Policy on the Lock In website.
         </Text>
       </View>
     </SafeAreaView>
@@ -202,30 +210,37 @@ export function AuthScreen({ onAuth }: AuthScreenProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fdfbf7",
+    backgroundColor: "#fff3e6",
     justifyContent: "center",
   },
   inner: {
     paddingHorizontal: 32,
   },
+  mascot: {
+    width: 96,
+    height: 96,
+    alignSelf: "center",
+    marginBottom: 16,
+    borderRadius: 28,
+  },
   kicker: {
-    fontSize: 11,
-    fontWeight: "600",
-    letterSpacing: 2,
-    color: "#c8553d",
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+    color: "#ff5a7a",
     textAlign: "center",
-    marginBottom: 8,
+    marginBottom: 6,
   },
   title: {
-    fontSize: 32,
-    fontWeight: "700",
+    fontSize: 34,
+    fontWeight: "800",
     textAlign: "center",
-    color: "#1a1715",
+    color: "#3a241e",
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 14,
-    color: "#7a716b",
+    color: "#a06d62",
     textAlign: "center",
     marginBottom: 32,
     lineHeight: 20,
@@ -233,20 +248,20 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#7a716b",
+    color: "#a06d62",
     marginBottom: 6,
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   input: {
     borderWidth: 1,
-    borderColor: "#ebe5dd",
-    borderRadius: 12,
+    borderColor: "#f5d5c4",
+    borderRadius: 18,
     backgroundColor: "#ffffff",
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 14,
-    color: "#1a1715",
+    color: "#3a241e",
     marginBottom: 16,
   },
   error: {
@@ -255,8 +270,8 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   button: {
-    backgroundColor: "#c8553d",
-    borderRadius: 12,
+    backgroundColor: "#ff5a7a",
+    borderRadius: 999,
     paddingVertical: 14,
     alignItems: "center",
     marginTop: 8,
@@ -276,12 +291,12 @@ const styles = StyleSheet.create({
   switchModeText: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#c8553d",
+    color: "#ff5a7a",
   },
   legal: {
     marginTop: 20,
     fontSize: 12,
-    color: "#7a716b",
+    color: "#a06d62",
     textAlign: "center",
     lineHeight: 18,
   },

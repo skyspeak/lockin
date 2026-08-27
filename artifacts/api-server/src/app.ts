@@ -73,7 +73,11 @@ const apiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many requests, please slow down." },
-  skip: (req) => req.path === "/healthz" || req.path === "/api/healthz",
+  skip: (req) =>
+    req.path === "/healthz" ||
+    req.path === "/api/healthz" ||
+    req.path === "/google/callback" ||
+    req.path === "/api/google/callback",
 });
 app.use("/api", apiLimiter);
 
@@ -81,7 +85,7 @@ app.use("/api", router);
 
 const webRoot = resolveWebRoot();
 if (webRoot) {
-  logger.info({ webRoot }, "Serving Clarity web UI");
+  logger.info({ webRoot }, "Serving Lock In web UI");
   const sendLegal = (file: string) => (req: Request, res: Response, next: NextFunction) => {
     res.sendFile(path.join(webRoot, file), (err) => {
       if (err) next(err);

@@ -6,15 +6,15 @@ interface LegalPageProps {
 
 function LegalPage({ title, updated, children }: LegalPageProps) {
   return (
-    <div className="min-h-screen bg-[#fdfbf7] text-[#1a1715]">
+    <div className="min-h-screen bg-[#fff3e6] text-[#3a241e]">
       <div className="mx-auto max-w-xl px-6 py-12">
-        <p className="text-xs font-semibold uppercase tracking-widest text-[#c8553d] mb-2">Clarity</p>
+        <p className="text-xs font-bold tracking-wide text-[#ff5a7a] mb-2">Lock In</p>
         <h1 className="text-3xl font-bold tracking-tight font-serif mb-2">{title}</h1>
-        <p className="text-sm text-[#7a716b] mb-8">Last updated {updated}</p>
-        <div className="space-y-4 text-sm leading-relaxed text-[#1a1715]">{children}</div>
+        <p className="text-sm text-[#a06d62] mb-8">Last updated {updated}</p>
+        <div className="space-y-4 text-sm leading-relaxed text-[#3a241e]">{children}</div>
         <p className="mt-10 text-sm">
-          <a href="/" className="font-semibold text-[#c8553d] hover:underline">
-            Back to Clarity
+          <a href="/" className="font-semibold text-[#ff5a7a] hover:underline">
+            Back to Lock In
           </a>
         </p>
       </div>
@@ -26,7 +26,7 @@ export function PrivacyPage() {
   return (
     <LegalPage title="Privacy Policy" updated="August 16, 2026">
       <p>
-        Clarity is a voice-first task app. This policy explains what we collect, why, and how you can
+        Lock In is a voice-first task app. This policy explains what we collect, why, and how you can
         delete it. By creating an account you agree to this policy.
       </p>
       <h2 className="text-base font-semibold pt-2">What we collect</h2>
@@ -41,14 +41,15 @@ export function PrivacyPage() {
       </ul>
       <h2 className="text-base font-semibold pt-2">How we use it</h2>
       <p>
-        We use your data only to run Clarity: sign you in, store your tasks, and convert speech into
+        We use your data only to run Lock In: sign you in, store your tasks, and convert speech into
         action items. We do not sell your data. We do not use your voice or tasks to advertise to you.
       </p>
       <h2 className="text-base font-semibold pt-2">Processors</h2>
       <p>
         Speech-to-text and task extraction are performed by Google Gemini and, if needed, OpenRouter
         acting as our processors. They receive the audio or transcript for that request so we can return
-        tasks to you.
+        tasks to you. The operator Gmail connection is used to send a daily task digest and to create
+        calendar events when a spoken thought includes a time.
       </p>
       <h2 className="text-base font-semibold pt-2">Your choices</h2>
       <p>
@@ -57,7 +58,7 @@ export function PrivacyPage() {
         tasks.
       </p>
       <h2 className="text-base font-semibold pt-2">Children</h2>
-      <p>Clarity is not directed at children under 13, and we do not knowingly collect their data.</p>
+      <p>Lock In is not directed at children under 13, and we do not knowingly collect their data.</p>
       <h2 className="text-base font-semibold pt-2">Contact</h2>
       <p>
         For privacy questions or to request deletion if you cannot use the in-app control, contact the
@@ -71,7 +72,7 @@ export function TermsPage() {
   return (
     <LegalPage title="Terms of Use" updated="August 16, 2026">
       <p>
-        Clarity helps you capture thoughts by voice and turn them into tasks. The service is provided as
+        Lock In helps you capture thoughts by voice and turn them into tasks. The service is provided as
         is. Please use it for your own personal organization.
       </p>
       <h2 className="text-base font-semibold pt-2">Your account</h2>
@@ -81,12 +82,12 @@ export function TermsPage() {
       </p>
       <h2 className="text-base font-semibold pt-2">The service</h2>
       <p>
-        Task extraction is automated and can be wrong. Review what Clarity creates before you act on it.
+        Task extraction is automated and can be wrong. Review what Lock In creates before you act on it.
         We may change or discontinue features. We may suspend accounts that abuse the API or other users.
       </p>
       <h2 className="text-base font-semibold pt-2">Limitation of liability</h2>
       <p>
-        To the fullest extent allowed by law, Skyspeak and Clarity are not liable for missed tasks, model
+        To the fullest extent allowed by law, Skyspeak and Lock In are not liable for missed tasks, model
         mistakes, downtime, or any damages that come from using the app.
       </p>
       <h2 className="text-base font-semibold pt-2">Termination</h2>

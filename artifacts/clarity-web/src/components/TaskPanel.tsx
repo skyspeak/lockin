@@ -22,11 +22,11 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
-  work: { bg: "#dbeafe", text: "#1e40af" },
-  family: { bg: "#fef3c7", text: "#92400e" },
-  hobbies: { bg: "#ede9fe", text: "#6d28d9" },
-  extracurriculars: { bg: "#ccfbf1", text: "#134e4a" },
-  other: { bg: "#f3f4f6", text: "#374151" },
+  work: { bg: "#ffe0e8", text: "#c73d5c" },
+  family: { bg: "#fff0c8", text: "#b07a12" },
+  hobbies: { bg: "#eadcff", text: "#6b3db8" },
+  extracurriculars: { bg: "#d4f7f2", text: "#1a8f84" },
+  other: { bg: "#fde8d8", text: "#9a6e62" },
 };
 
 type TaskPanelProps = {
@@ -66,15 +66,15 @@ export function TaskPanel({
 }: TaskPanelProps) {
   if (isLoading) {
     return (
-      <div className="py-8 text-center text-sm text-[#7a716b]">Loading tasks…</div>
+      <div className="py-8 text-center text-sm text-[#a06d62]">Loading tasks…</div>
     );
   }
 
   if (tasks.length === 0) {
     return (
       <div className="py-10 text-center">
-        <p className="text-sm text-[#7a716b]">No tasks yet.</p>
-        <p className="text-xs text-[#7a716b]/80 mt-1">Speak something to add your first one.</p>
+        <p className="text-sm text-[#a06d62]">Nothing in the pile yet.</p>
+        <p className="text-xs text-[#a06d62]/80 mt-1">Speak something into existence.</p>
       </div>
     );
   }
@@ -95,14 +95,14 @@ export function TaskPanel({
 
   return (
     <div className={`space-y-4 ${compact ? "max-h-[40vh] overflow-y-auto pr-1" : ""}`}>
-      <p className="px-1 text-[11px] text-[#7a716b]">
+      <p className="px-1 text-[11px] text-[#a06d62]">
         Swipe right to finish · swipe left to delete
       </p>
       {grouped.map((group) => {
         const chip = CATEGORY_COLORS[group.category] ?? CATEGORY_COLORS.other;
         return (
           <section key={group.category}>
-            <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-[#7a716b]">
+            <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-[#a06d62]">
               {CATEGORY_LABELS[group.category] ?? group.category}
             </p>
             <ul className="space-y-2">
@@ -111,7 +111,7 @@ export function TaskPanel({
                 return (
                   <li key={a.id}>
                     <SwipeTask onDone={() => onComplete(a.id)} onDelete={() => onDelete(a.id)}>
-                      <div className="rounded-2xl border border-[#ebe5dd] bg-white p-4">
+                      <div className="rounded-2xl border border-[#f5d5c4] bg-white p-4">
                         <div className="mb-3 flex items-start justify-between gap-3">
                           <p className="text-[15px] leading-snug font-medium">{a.title}</p>
                           <span
@@ -124,7 +124,7 @@ export function TaskPanel({
                         {Array.isArray(a.nextSteps) && a.nextSteps.length > 0 && (
                           <ol className="mb-3 ml-4 list-decimal space-y-1">
                             {a.nextSteps.map((step, index) => (
-                              <li key={`${a.id}-step-${index}`} className="text-xs text-[#7a716b] leading-snug">
+                              <li key={`${a.id}-step-${index}`} className="text-xs text-[#a06d62] leading-snug">
                                 {step}
                               </li>
                             ))}
@@ -137,14 +137,14 @@ export function TaskPanel({
                           placeholder="Type a refinement or paste a transcript…"
                           disabled={isRefining}
                           rows={3}
-                          className="mb-2 w-full resize-y rounded-lg border border-[#ebe5dd] bg-white px-3 py-2 text-sm text-[#1a1715] outline-none focus:border-[#c8553d]"
+                          className="mb-2 w-full resize-y rounded-2xl border border-[#f5d5c4] bg-white px-3 py-2 text-sm text-[#3a241e] outline-none focus:border-[#ff5a7a]"
                         />
                         <div className="flex gap-2">
                           <button
                             type="button"
                             disabled={isRefining}
                             onClick={() => onRefineText(a.id, notes[a.id] ?? "")}
-                            className="rounded-lg border border-[#c8553d44] bg-white px-3 py-2 text-xs font-semibold text-[#c8553d]"
+                            className="rounded-full border border-[#ff5a7a44] bg-white px-3 py-2 text-xs font-semibold text-[#ff5a7a]"
                           >
                             {isRefining && refiningId === a.id && !listening ? "Refining…" : "Refine"}
                           </button>
@@ -152,10 +152,10 @@ export function TaskPanel({
                             type="button"
                             disabled={isRefining && !listening}
                             onClick={() => onRefineVoice(a.id)}
-                            className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
+                            className={`rounded-full border px-3 py-2 text-xs font-semibold ${
                               listening
-                                ? "border-[#c8553d] bg-[#c8553d] text-white"
-                                : "border-[#c8553d44] bg-white text-[#c8553d]"
+                                ? "border-[#ff5a7a] bg-[#ff5a7a] text-white"
+                                : "border-[#ff5a7a44] bg-white text-[#ff5a7a]"
                             }`}
                           >
                             {listening ? "Tap to stop" : "Speak"}

@@ -2,6 +2,8 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { pool } from "@workspace/db";
 import { DERIVED_USER_ID } from "./middlewares/auth";
+import { Cron } from "croner";
+import { runDailyDigest } from "./lib/digest";
 
 // Railway deploys from this package; keep a source change here so lockfile-only
 // commits at the repo root still trigger a rebuild.
@@ -96,6 +98,16 @@ async function migrateSchema(): Promise<void> {
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
   `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS google_oauth (
+      id TEXT PRIMARY KEY,
+      email TEXT,
+      refresh_token TEXT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
 }
 
 migrateSchema()
@@ -107,6 +119,12 @@ migrateSchema()
       }
 
       logger.info({ port }, "Server listening");
+      new Cron("0 21 * * *", { timezone: "America/Los_Angeles", protect: true }, () => {
+        void runDailyDigest().catch((digestErr) => {
+          logger.error({ err: digestErr instanceof Error ? digestErr.message : "unknown" }, "scheduled digest failed");
+        });
+      });
+      logger.info("Daily digest scheduled for 21:00 America/Los_Angeles");
     });
   })
   .catch((err) => {

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Clarity",
+    "name": "Lock In",
     "slug": "lockin",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -9,17 +9,17 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/icon.png",
+      "image": "./assets/images/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#fdfbf7"
+      "backgroundColor": "#fff3e6"
     },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.skyspeak.lockin",
-      "buildNumber": "8",
+      "buildNumber": "14",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Clarity uses the microphone so you can dictate thoughts hands-free.",
-        "NSCameraUsageDescription": "Clarity uses the camera to attach photos to thoughts.",
+        "NSMicrophoneUsageDescription": "Lock In uses the microphone so you can dictate thoughts hands-free.",
+        "NSCameraUsageDescription": "Lock In uses the camera to attach photos to thoughts.",
         "ITSAppUsesNonExemptEncryption": false,
         "LSApplicationQueriesSchemes": [
           "itms-beta",
@@ -42,7 +42,7 @@
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
-        "backgroundColor": "#fdfbf7"
+        "backgroundColor": "#fff3e6"
       }
     },
     "web": {
@@ -60,15 +60,15 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Clarity uses the microphone so you can capture thoughts by voice."
+          "microphonePermission": "Lock In uses the microphone so you can capture thoughts by voice."
         }
       ],
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#fdfbf7",
-          "image": "./assets/images/icon.png",
-          "imageWidth": 200
+          "backgroundColor": "#fff3e6",
+          "image": "./assets/images/splash.png",
+          "imageWidth": 260
         }
       ]
     ],

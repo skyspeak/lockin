@@ -8,7 +8,7 @@ type Step = "invite" | "account";
 type Mode = "signin" | "signup";
 
 const fieldClass =
-  "w-full rounded-xl border border-[#ebe5dd] bg-white px-4 py-3 text-sm text-[#1a1715] outline-none focus:border-[#c8553d] transition-colors";
+  "w-full rounded-2xl border border-[#f5d5c4] bg-white px-4 py-3 text-sm text-[#3a241e] outline-none focus:border-[#ff5a7a] transition-colors";
 
 export default function Login({ onLogin }: LoginProps) {
   const [step, setStep] = useState<Step>("invite");
@@ -89,19 +89,20 @@ export default function Login({ onLogin }: LoginProps) {
   };
 
   return (
-    <div className="min-h-screen bg-[#fdfbf7] flex items-center justify-center">
+    <div className="min-h-screen lockin-shell flex items-center justify-center">
       <div className="w-full max-w-sm px-6">
-        <p className="text-xs font-semibold uppercase tracking-widest text-[#c8553d] mb-2 text-center">
-          Voice first
+        <img src="/favicon.svg" alt="" className="mx-auto mb-4 h-16 w-16 lockin-float" />
+        <p className="text-xs font-bold tracking-wide text-[#ff5a7a] mb-2 text-center">
+          dump it. lock it.
         </p>
-        <h1 className="text-3xl font-bold tracking-tight text-center mb-2 text-[#1a1715] font-serif">
-          Clarity
+        <h1 className="text-3xl font-bold tracking-tight text-center mb-2 text-[#3a241e] font-serif">
+          Lock In
         </h1>
 
         {step === "invite" ? (
           <>
-            <p className="text-sm text-[#7a716b] text-center mb-8">
-              Input your special invite code.
+            <p className="text-sm text-[#a06d62] text-center mb-8">
+              Got an invite? Slip it in.
             </p>
             <form onSubmit={checkInvite} className="flex flex-col gap-3">
               <input
@@ -111,7 +112,7 @@ export default function Login({ onLogin }: LoginProps) {
                   setInviteCode(e.target.value);
                   setError("");
                 }}
-                placeholder="Special invite code"
+                placeholder="your secret handshake"
                 autoComplete="off"
                 autoFocus
                 className={fieldClass}
@@ -120,16 +121,16 @@ export default function Login({ onLogin }: LoginProps) {
               <button
                 type="submit"
                 disabled={busy}
-                className="w-full rounded-xl bg-[#c8553d] py-3 text-sm font-semibold text-white hover:bg-[#b34a35] transition-colors disabled:opacity-60"
+                className="w-full rounded-full bg-[#ff5a7a] py-3 text-sm font-semibold text-white hover:bg-[#ff7a93] transition-colors disabled:opacity-60"
               >
-                {busy ? "Please wait…" : "Continue"}
+                {busy ? "Checking…" : "Let’s go"}
               </button>
             </form>
           </>
         ) : (
           <>
-            <p className="text-sm text-[#7a716b] text-center mb-8">
-              {mode === "signup" ? "Create your account." : "Sign in to your account."}
+            <p className="text-sm text-[#a06d62] text-center mb-8">
+              {mode === "signup" ? "Make your corner of Lock In." : "Welcome back. Let’s lock in."}
             </p>
             <form onSubmit={submitAccount} className="flex flex-col gap-3">
               <input
@@ -159,9 +160,9 @@ export default function Login({ onLogin }: LoginProps) {
               <button
                 type="submit"
                 disabled={busy}
-                className="w-full rounded-xl bg-[#c8553d] py-3 text-sm font-semibold text-white hover:bg-[#b34a35] transition-colors disabled:opacity-60"
+                className="w-full rounded-full bg-[#ff5a7a] py-3 text-sm font-semibold text-white hover:bg-[#ff7a93] transition-colors disabled:opacity-60"
               >
-                {busy ? "Please wait…" : mode === "signup" ? "Create account" : "Sign in"}
+                {busy ? "One sec…" : mode === "signup" ? "Create account" : "Sign in"}
               </button>
             </form>
             <button
@@ -170,14 +171,14 @@ export default function Login({ onLogin }: LoginProps) {
                 setMode(mode === "signup" ? "signin" : "signup");
                 setError("");
               }}
-              className="mt-4 w-full text-center text-sm font-semibold text-[#c8553d]"
+              className="mt-4 w-full text-center text-sm font-semibold text-[#ff5a7a]"
             >
               {mode === "signup" ? "Already have an account? Sign in" : "Need an account? Create one"}
             </button>
           </>
         )}
 
-        <p className="mt-6 text-center text-xs text-[#7a716b]">
+        <p className="mt-6 text-center text-xs text-[#a06d62]">
           By continuing you agree to the{" "}
           <a href="/terms" className="underline">
             Terms

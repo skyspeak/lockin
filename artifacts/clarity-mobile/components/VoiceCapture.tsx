@@ -25,97 +25,208 @@ import { getApiBasePath, resolveDefaultApiOrigin } from "@/constants/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const COLORS = {
-  bg: "#fdfbf7",
-  ink: "#1a1715",
-  inkDim: "#7a716b",
-  accent: "#c8553d",
-  accentActive: "#a8412e",
+  bg: "#fff3e6",
+  ink: "#3a241e",
+  inkDim: "#a06d62",
+  accent: "#ff5a7a",
+  accentActive: "#e63e64",
 };
 
 const SERVER_STORAGE_KEY = "clarity_api_server_url";
+const CAPTURE_MODE_KEY = "lockin_capture_mode";
+
+/** Always pass options into prepare so iOS recreates AVAudioRecorder (reuse after stop crashes). */
+const RECORD_OPTIONS = {
+  ...RecordingPresets.HIGH_QUALITY,
+  isMeteringEnabled: true,
+};
+
+export type CaptureMode = "tasks" | "transcribe";
 
 async function resolveApiBase(): Promise<string> {
   const stored = await AsyncStorage.getItem(SERVER_STORAGE_KEY);
   const origin = stored || resolveDefaultApiOrigin();
   return getApiBasePath(origin);
-};
+}
+
+function wait(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
 
 export function useVoiceCapture() {
   const apiKey = useApiKey();
   const queryClient = useQueryClient();
   const queueUrl = getGetActionQueueUrl();
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorder = useAudioRecorder(RECORD_OPTIONS);
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [lastCaptured, setLastCaptured] = useState<{ title: string; nextSteps: string[] }[]>([]);
+  const [lastTranscript, setLastTranscript] = useState("");
+  const [captureMode, setCaptureModeState] = useState<CaptureMode>("tasks");
+  const captureModeRef = useRef<CaptureMode>("tasks");
   const focusedRef = useRef(false);
   const recordingRef = useRef(false);
   const transcribingRef = useRef(false);
+  /** Serialize prepare/stop so a restart never overlaps a stop (native crash). */
+  const micLockRef = useRef<Promise<void>>(Promise.resolve());
+  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startRecordingRef = useRef<() => Promise<void>>(async () => {});
+  /** Drive glow off the JS thread without re-rendering the whole Speak screen. */
+  const energyAnim = useRef(new Animated.Value(0.22)).current;
+
+  const withMicLock = useCallback(async <T,>(fn: () => Promise<T>): Promise<T> => {
+    const previous = micLockRef.current;
+    let release!: () => void;
+    micLockRef.current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous.catch(() => {});
+    try {
+      return await fn();
+    } finally {
+      release();
+    }
+  }, []);
+
+  const clearRestartTimer = useCallback(() => {
+    if (restartTimerRef.current != null) {
+      clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleRestart = useCallback((delayMs = 400) => {
+    clearRestartTimer();
+    restartTimerRef.current = setTimeout(() => {
+      restartTimerRef.current = null;
+      if (focusedRef.current && !transcribingRef.current) {
+        void startRecordingRef.current();
+      }
+    }, delayMs);
+  }, [clearRestartTimer]);
 
   const invalidateQueue = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: [queueUrl] });
   }, [queryClient, queueUrl]);
 
-  const startRecording = useCallback(async () => {
-    if (recordingRef.current || transcribingRef.current || !focusedRef.current) return;
-    recordingRef.current = true;
-    try {
-      const status = await AudioModule.requestRecordingPermissionsAsync();
-      if (!status.granted) {
-        recordingRef.current = false;
-        setIsRecording(false);
-        Alert.alert("Mic unavailable", "Please grant microphone permission in Settings.");
-        return;
-      }
-      if (!focusedRef.current) {
-        recordingRef.current = false;
-        return;
-      }
-      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
-      await recorder.prepareToRecordAsync();
-      recorder.record();
-      setIsRecording(true);
-    } catch {
-      recordingRef.current = false;
-      setIsRecording(false);
-    }
-  }, [recorder]);
+  const setCaptureMode = useCallback((mode: CaptureMode) => {
+    captureModeRef.current = mode;
+    setCaptureModeState(mode);
+    AsyncStorage.setItem(CAPTURE_MODE_KEY, mode).catch(() => {});
+  }, []);
 
-  const stopOnly = useCallback(async () => {
-    if (!recordingRef.current) return;
+  useEffect(() => {
+    AsyncStorage.getItem(CAPTURE_MODE_KEY).then((stored) => {
+      if (stored === "transcribe" || stored === "tasks") {
+        captureModeRef.current = stored;
+        setCaptureModeState(stored);
+      }
+    }).catch(() => {});
+  }, []);
+
+  const hardStopRecorder = useCallback(async () => {
     try {
-      await recorder.stop();
+      const status = recorder.getStatus();
+      if (status.isRecording || status.canRecord) {
+        await recorder.stop();
+      }
     } catch {
-      // already stopped
+      // already stopped / not prepared
     }
     recordingRef.current = false;
     setIsRecording(false);
   }, [recorder]);
 
+  const startRecording = useCallback(async () => {
+    await withMicLock(async () => {
+      if (recordingRef.current || transcribingRef.current || !focusedRef.current) return;
+      recordingRef.current = true;
+      try {
+        const status = await AudioModule.requestRecordingPermissionsAsync();
+        if (!status.granted) {
+          recordingRef.current = false;
+          setIsRecording(false);
+          Alert.alert("Mic unavailable", "Please grant microphone permission in Settings.");
+          return;
+        }
+        if (!focusedRef.current || transcribingRef.current) {
+          recordingRef.current = false;
+          return;
+        }
+
+        await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+        // Stop any leftover session, then always re-prepare WITH options so iOS
+        // allocates a fresh AVAudioRecorder file (required after the first stop).
+        await hardStopRecorder();
+        await wait(60);
+        if (!focusedRef.current || transcribingRef.current) {
+          recordingRef.current = false;
+          return;
+        }
+
+        await recorder.prepareToRecordAsync(RECORD_OPTIONS);
+        if (!focusedRef.current || transcribingRef.current) {
+          await hardStopRecorder();
+          return;
+        }
+        recorder.record();
+        recordingRef.current = true;
+        setIsRecording(true);
+      } catch {
+        recordingRef.current = false;
+        setIsRecording(false);
+        try {
+          await hardStopRecorder();
+        } catch {
+          // ignore
+        }
+      }
+    });
+  }, [hardStopRecorder, recorder, withMicLock]);
+  startRecordingRef.current = startRecording;
+
+  const stopOnly = useCallback(async () => {
+    clearRestartTimer();
+    await withMicLock(async () => {
+      await hardStopRecorder();
+    });
+  }, [clearRestartTimer, hardStopRecorder, withMicLock]);
+
   const stopAndTranscribe = useCallback(async () => {
     if (!recordingRef.current || transcribingRef.current) return;
-    try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-      await recorder.stop();
+    clearRestartTimer();
+
+    const stoppedUri = await withMicLock(async () => {
+      if (!recordingRef.current || transcribingRef.current) return null;
+      try {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+        await recorder.stop();
+      } catch {
+        // already stopped
+      }
       recordingRef.current = false;
       setIsRecording(false);
-      const uri = recorder.uri;
-      if (!uri) {
-        if (focusedRef.current) void startRecording();
-        return;
-      }
+      return recorder.uri;
+    });
 
-      transcribingRef.current = true;
-      setIsTranscribing(true);
+    if (!stoppedUri) {
+      scheduleRestart(400);
+      return;
+    }
 
+    transcribingRef.current = true;
+    setIsTranscribing(true);
+
+    try {
       const form = new FormData();
-      const ext = uri.split(".").pop() || "m4a";
+      const ext = stoppedUri.split(".").pop() || "m4a";
       const mime = ext === "m4a" ? "audio/m4a" : `audio/${ext}`;
       // @ts-ignore
-      form.append("audio", { uri, name: `audio.${ext}`, type: mime });
+      form.append("audio", { uri: stoppedUri, name: `audio.${ext}`, type: mime });
 
       const apiBase = await resolveApiBase();
-      const res = await fetch(`${apiBase}/capture`, {
+      const mode = captureModeRef.current;
+      const res = await fetch(`${apiBase}/capture?mode=${mode}`, {
         method: "POST",
         body: form,
         headers: { Authorization: `Bearer ${apiKey}` },
@@ -137,13 +248,32 @@ export function useVoiceCapture() {
           Alert.alert("Couldn't read that recording", "Try speaking again for a couple of seconds.");
         } else {
           Alert.alert(
-            "Couldn't turn that into tasks",
+            mode === "transcribe" ? "Couldn't transcribe that" : "Couldn't turn that into tasks",
             detail || `Server returned ${res.status}. Check GEMINI_API_KEY on Railway.`,
           );
         }
         return;
       }
-      const json = (await res.json()) as { actions?: { title: string; nextSteps?: string[] }[] };
+      const json = (await res.json()) as {
+        transcript?: string;
+        actions?: { title: string; nextSteps?: string[]; description?: string | null }[];
+        calendarCreated?: number;
+        calendarError?: string;
+        emails?: Array<{ title: string; subject: string; to: string[]; sent: boolean; error?: string }>;
+        research?: Array<{ title: string; type?: string; answer: string }>;
+        kinds?: string[];
+      };
+      if (mode === "transcribe") {
+        const text = json.transcript?.trim() || "";
+        if (!text) {
+          Alert.alert("Nothing captured", "Try speaking again.");
+          return;
+        }
+        setLastTranscript(text);
+        setLastCaptured([]);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        return;
+      }
       const items = (json.actions ?? [])
         .map((a) => ({ title: a.title, nextSteps: a.nextSteps ?? [] }))
         .filter((a) => a.title);
@@ -153,135 +283,324 @@ export function useVoiceCapture() {
       }
 
       setLastCaptured(items);
+      setLastTranscript("");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       invalidateQueue();
+
+      const sentEmails = (json.emails ?? []).filter((e) => e.sent);
+      const blockedEmails = (json.emails ?? []).filter((e) => !e.sent);
+      const researchBits = json.research ?? [];
+
+      if (researchBits.length > 0) {
+        Alert.alert(
+          researchBits.length === 1 ? "Research ready" : "Research locked in",
+          researchBits.map((r) => r.answer.slice(0, 280)).join("\n\n"),
+        );
+      } else if (sentEmails.length > 0) {
+        Alert.alert(
+          sentEmails.length === 1 ? "Email sent" : "Emails sent",
+          sentEmails.map((e) => `${e.subject} → ${e.to.join(", ")}`).join("\n"),
+        );
+      } else if (blockedEmails.length > 0) {
+        Alert.alert(
+          "Draft saved",
+          blockedEmails.map((e) => e.error || "Need a recipient email before sending.").join("\n"),
+        );
+      } else if (json.calendarCreated && json.calendarCreated > 0) {
+        Alert.alert("On your calendar", `${json.calendarCreated} event${json.calendarCreated === 1 ? "" : "s"} added.`);
+      } else if (json.calendarError) {
+        Alert.alert("Task saved", "Calendar invite did not send. Connect Gmail in Settings.");
+      } else if ((json.kinds ?? []).includes("task") || items.length > 0) {
+        // Deep solve map already attached to the task — light confirmation.
+      }
     } catch {
       Alert.alert("Couldn't turn that into tasks", "Please try again.");
     } finally {
       transcribingRef.current = false;
       setIsTranscribing(false);
-      if (focusedRef.current) {
-        setTimeout(() => {
-          if (focusedRef.current) void startRecording();
-        }, 250);
-      }
+      if (focusedRef.current) scheduleRestart(450);
     }
-  }, [apiKey, invalidateQueue, recorder, startRecording]);
+  }, [apiKey, clearRestartTimer, invalidateQueue, recorder, scheduleRestart, withMicLock]);
 
   useFocusEffect(
     useCallback(() => {
       focusedRef.current = true;
-      void startRecording();
+      void startRecordingRef.current();
       return () => {
         focusedRef.current = false;
+        clearRestartTimer();
         void stopOnly();
       };
-    }, [startRecording, stopOnly]),
+    }, [clearRestartTimer, stopOnly]),
   );
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", (state) => {
       if (state !== "active") {
+        clearRestartTimer();
         void stopOnly();
         return;
       }
-      if (focusedRef.current) void startRecording();
+      if (focusedRef.current) scheduleRestart(300);
     });
-    return () => sub.remove();
-  }, [startRecording, stopOnly]);
+    return () => {
+      sub.remove();
+      clearRestartTimer();
+    };
+  }, [clearRestartTimer, scheduleRestart, stopOnly]);
 
-  const onMicPress = isRecording ? stopAndTranscribe : startRecording;
+  const onMicPress = () => {
+    if (isTranscribing) return;
+    if (isRecording) void stopAndTranscribe();
+    else void startRecording();
+  };
+
+  useEffect(() => {
+    if (!isRecording || isTranscribing) {
+      energyAnim.setValue(0.22);
+      return;
+    }
+    const id = setInterval(() => {
+      try {
+        const metering = recorder.getStatus().metering;
+        energyAnim.setValue(normalizeMetering(metering));
+      } catch {
+        // recorder may be mid restart
+      }
+    }, 180);
+    return () => clearInterval(id);
+  }, [energyAnim, isRecording, isTranscribing, recorder]);
 
   return {
     isRecording,
     isTranscribing,
     lastCaptured,
+    lastTranscript,
+    captureMode,
+    setCaptureMode,
     onMicPress,
+    energyAnim,
   };
+}
+
+function normalizeMetering(db?: number): number {
+  if (typeof db !== "number" || Number.isNaN(db)) return 0.22;
+  const min = -55;
+  const max = -8;
+  return Math.min(1, Math.max(0, (db - min) / (max - min)));
+}
+
+const RING_COUNT = 2;
+const RING_MS = 2200;
+
+function ListeningAura({
+  active,
+  energy,
+}: {
+  active: boolean;
+  energy: Animated.Value;
+}) {
+  const rings = useRef(
+    Array.from({ length: RING_COUNT }, () => new Animated.Value(0)),
+  ).current;
+  const breathe = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!active) {
+      rings.forEach((ring) => ring.setValue(0));
+      breathe.setValue(0);
+      return;
+    }
+
+    const stoppers = rings.map((ring, index) => {
+      const loop = Animated.loop(
+        Animated.timing(ring, {
+          toValue: 1,
+          duration: RING_MS,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      );
+      const delay = setTimeout(() => loop.start(), index * (RING_MS / RING_COUNT));
+      return () => {
+        clearTimeout(delay);
+        loop.stop();
+        ring.setValue(0);
+      };
+    });
+
+    const breatheLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(breathe, {
+          toValue: 1,
+          duration: 1100,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(breathe, {
+          toValue: 0,
+          duration: 1100,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    breatheLoop.start();
+
+    return () => {
+      stoppers.forEach((stop) => stop());
+      breatheLoop.stop();
+    };
+  }, [active, breathe, rings]);
+
+  if (!active) return null;
+
+  const breatheScale = breathe.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.05],
+  });
+  const glowScale = energy.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1.06, 1.55],
+  });
+  const glowOpacity = energy.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.16, 0.48],
+  });
+
+  return (
+    <>
+      {rings.map((ring, index) => {
+        const scale = ring.interpolate({
+          inputRange: [0, 1],
+          outputRange: [1, 2.35],
+        });
+        const opacity = ring.interpolate({
+          inputRange: [0, 0.2, 1],
+          outputRange: [0.5, 0.32, 0],
+        });
+        return (
+          <Animated.View
+            key={index}
+            pointerEvents="none"
+            style={[
+              styles.ripple,
+              index === 1 ? styles.rippleMint : null,
+              { transform: [{ scale }], opacity },
+            ]}
+          />
+        );
+      })}
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.voiceGlow, { opacity: glowOpacity, transform: [{ scale: glowScale }] }]}
+      />
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.breatheHalo, { transform: [{ scale: breatheScale }] }]}
+      />
+    </>
+  );
 }
 
 type VoiceCaptureHeroProps = {
   isRecording: boolean;
   isTranscribing: boolean;
   lastCaptured: { title: string; nextSteps: string[] }[];
+  lastTranscript?: string;
+  captureMode?: CaptureMode;
+  onCaptureModeChange?: (mode: CaptureMode) => void;
   onMicPress: () => void;
+  energyAnim: Animated.Value;
 };
 
 export function VoiceCaptureHero({
   isRecording,
   isTranscribing,
   lastCaptured,
+  lastTranscript = "",
+  captureMode = "tasks",
+  onCaptureModeChange,
   onMicPress,
+  energyAnim,
 }: VoiceCaptureHeroProps) {
-  const pulse = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (!isRecording) {
-      pulse.setValue(0);
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 900, easing: Easing.out(Easing.ease), useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0, duration: 900, easing: Easing.in(Easing.ease), useNativeDriver: true }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [isRecording, pulse]);
-
-  const pulseScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.18] });
-  const pulseOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0] });
-
+  const transcribeOnly = captureMode === "transcribe";
   return (
     <View style={styles.hero}>
-      <Text style={styles.kicker}>VOICE FIRST</Text>
-      <Text style={styles.brand}>Clarity</Text>
+      <View style={styles.blobOne} pointerEvents="none" />
+      <View style={styles.blobTwo} pointerEvents="none" />
+      <Text style={styles.kicker}>dump it. lock it.</Text>
+      <Text style={styles.brand}>Lock In</Text>
+      <View style={styles.modeRow}>
+        <Pressable
+          onPress={() => onCaptureModeChange?.("tasks")}
+          style={[styles.modeChip, !transcribeOnly && styles.modeChipOn]}
+        >
+          <Text style={[styles.modeChipText, !transcribeOnly && styles.modeChipTextOn]}>Tasks</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => onCaptureModeChange?.("transcribe")}
+          style={[styles.modeChip, transcribeOnly && styles.modeChipOn]}
+        >
+          <Text style={[styles.modeChipText, transcribeOnly && styles.modeChipTextOn]}>Notes</Text>
+        </Pressable>
+      </View>
       <Text style={styles.sub}>
         {isTranscribing
-          ? "Turning that into tasks and next steps…"
+          ? transcribeOnly
+            ? "Writing that down…"
+            : "Cooking it into tasks…"
           : isRecording
-            ? "Listening. Speak, then tap to send."
-            : "Opening the mic…"}
+            ? transcribeOnly
+              ? "Ears open. Tap when the thought’s out."
+              : "Ears open. Tap when you’re done."
+            : "Waking the mic…"}
       </Text>
 
-      <View style={styles.micWrap}>
-        {isRecording && (
-          <Animated.View
-            style={[styles.pulse, { transform: [{ scale: pulseScale }], opacity: pulseOpacity }]}
-          />
-        )}
-        <Pressable
-          onPress={onMicPress}
-          disabled={isTranscribing}
-          style={({ pressed }) => [
-            styles.mic,
-            isRecording && styles.micActive,
-            pressed && { transform: [{ scale: 0.96 }] },
-          ]}
-        >
-          {isTranscribing ? (
-            <ActivityIndicator color="#fff" size="large" />
-          ) : (
-            <Text style={styles.micIcon}>{isRecording ? "■" : "🎤"}</Text>
-          )}
-        </Pressable>
+      <View style={styles.micCol}>
+        <View style={styles.micStage}>
+          <ListeningAura active={isRecording && !isTranscribing} energy={energyAnim} />
+          <Pressable
+            onPress={onMicPress}
+            disabled={isTranscribing}
+            style={({ pressed }) => [
+              styles.mic,
+              isRecording && styles.micActive,
+              pressed && { transform: [{ scale: 0.96 }] },
+            ]}
+          >
+            {isTranscribing ? (
+              <ActivityIndicator color="#fff" size="large" />
+            ) : (
+              <Text style={styles.micIcon}>{isRecording ? "✦" : "🎙️"}</Text>
+            )}
+          </Pressable>
+        </View>
         <Text style={styles.micLabel}>
           {isTranscribing
-            ? "Turning that into tasks and next steps…"
+            ? transcribeOnly
+              ? "Almost…"
+              : "Mapping it…"
             : isRecording
-              ? "Tap to send"
-              : "Tap if listening didn’t start"}
+              ? "Tap to lock it in"
+              : "Tap if the mic is shy"}
         </Text>
       </View>
 
-      {lastCaptured.length > 0 && !isTranscribing ? (
+      {transcribeOnly && lastTranscript && !isTranscribing ? (
         <View style={styles.captured}>
-          <Text style={styles.capturedLabel}>JUST ADDED</Text>
+          <Text style={styles.capturedLabel}>CAUGHT THAT</Text>
+          <Text style={styles.capturedText}>{lastTranscript}</Text>
+        </View>
+      ) : null}
+
+      {!transcribeOnly && lastCaptured.length > 0 && !isTranscribing ? (
+        <View style={styles.captured}>
+          <Text style={styles.capturedLabel}>LOCKED IN</Text>
           {lastCaptured.map((item, index) => (
             <View key={`${index}-${item.title}`} style={styles.capturedItem}>
               <Text style={styles.capturedText}>{item.title}</Text>
-              {(Array.isArray(item.nextSteps) ? item.nextSteps : []).map((step, stepIndex) => (
+              {(Array.isArray(item.nextSteps) ? item.nextSteps : []).slice(0, 3).map((step, stepIndex) => (
                 <Text key={`${index}-step-${stepIndex}`} style={styles.capturedStep}>
                   {`• ${step}`}
                 </Text>
@@ -301,19 +620,38 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 32,
     paddingBottom: 24,
+    overflow: "hidden",
+  },
+  blobOne: {
+    position: "absolute",
+    top: -40,
+    right: -60,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: "#ff5a7a18",
+  },
+  blobTwo: {
+    position: "absolute",
+    bottom: 40,
+    left: -80,
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: "#3ecfc118",
   },
   kicker: {
     fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
-    letterSpacing: 2,
+    fontSize: 12,
+    letterSpacing: 0.4,
     color: COLORS.accent,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   brand: {
     fontFamily: "Inter_700Bold",
-    fontSize: 36,
+    fontSize: 40,
     color: COLORS.ink,
-    letterSpacing: -0.5,
+    letterSpacing: -1,
   },
   sub: {
     fontFamily: "Inter_400Regular",
@@ -321,51 +659,102 @@ const styles = StyleSheet.create({
     color: COLORS.inkDim,
     textAlign: "center",
     marginTop: 8,
-    marginBottom: 36,
+    marginBottom: 12,
     lineHeight: 22,
+    maxWidth: 280,
   },
-  micWrap: { alignItems: "center", justifyContent: "center" },
-  pulse: {
+  modeRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 14,
+  },
+  modeChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#f5d5c4",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: "#ffffffcc",
+  },
+  modeChipOn: {
+    borderColor: COLORS.accent,
+    backgroundColor: COLORS.accent + "18",
+  },
+  modeChipText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+    color: COLORS.inkDim,
+  },
+  modeChipTextOn: {
+    color: COLORS.accent,
+  },
+  micCol: { alignItems: "center" },
+  micStage: {
+    width: 280,
+    height: 280,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  ripple: {
     position: "absolute",
-    width: 150,
-    height: 150,
-    borderRadius: 75,
+    width: 128,
+    height: 128,
+    borderRadius: 64,
+    borderWidth: 2,
+    borderColor: COLORS.accent,
+  },
+  rippleMint: {
+    borderColor: "#3ecfc1",
+  },
+  voiceGlow: {
+    position: "absolute",
+    width: 128,
+    height: 128,
+    borderRadius: 64,
     backgroundColor: COLORS.accent,
   },
+  breatheHalo: {
+    position: "absolute",
+    width: 148,
+    height: 148,
+    borderRadius: 74,
+    backgroundColor: COLORS.accent + "22",
+  },
   mic: {
-    width: 132,
-    height: 132,
-    borderRadius: 66,
+    width: 128,
+    height: 128,
+    borderRadius: 64,
     backgroundColor: COLORS.accent,
     alignItems: "center",
     justifyContent: "center",
+    zIndex: 2,
     shadowColor: COLORS.accent,
-    shadowOpacity: 0.4,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 10,
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
   },
   micActive: { backgroundColor: COLORS.accentActive },
-  micIcon: { fontSize: 44 },
+  micIcon: { fontSize: 42 },
   micLabel: {
-    marginTop: 16,
+    marginTop: -18,
     fontFamily: "Inter_500Medium",
     fontSize: 14,
     color: COLORS.inkDim,
   },
   captured: {
-    marginTop: 28,
+    marginTop: 20,
     width: "100%",
-    borderRadius: 16,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: COLORS.accent + "33",
-    backgroundColor: COLORS.accent + "10",
+    backgroundColor: "#ffffffcc",
     padding: 16,
   },
   capturedLabel: {
     fontFamily: "Inter_600SemiBold",
     fontSize: 10,
-    letterSpacing: 1,
+    letterSpacing: 1.2,
     color: COLORS.accent,
     marginBottom: 6,
   },

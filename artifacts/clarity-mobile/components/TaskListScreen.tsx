@@ -21,14 +21,19 @@ import { useApiKey } from "@/components/AuthContext";
 import { getApiBasePath, resolveDefaultApiOrigin } from "@/constants/api";
 
 const COLORS = {
-  bg: "#fdfbf7",
-  ink: "#1a1715",
-  inkDim: "#7a716b",
-  hairline: "#ebe5dd",
+  bg: "#fff3e6",
+  ink: "#3a241e",
+  inkDim: "#a06d62",
+  hairline: "#f5d5c4",
   card: "#ffffff",
-  accent: "#c8553d",
-  green: "#5d7a4a",
+  accent: "#ff5a7a",
+  green: "#2aa89c",
   red: "#c0392b",
+};
+
+const RECORD_OPTIONS = {
+  ...RecordingPresets.HIGH_QUALITY,
+  isMeteringEnabled: false,
 };
 
 const SERVER_STORAGE_KEY = "clarity_api_server_url";
@@ -53,11 +58,11 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
-  work: { bg: "#dbeafe", text: "#1e40af" },
-  family: { bg: "#fef3c7", text: "#92400e" },
-  hobbies: { bg: "#ede9fe", text: "#6d28d9" },
-  extracurriculars: { bg: "#ccfbf1", text: "#134e4a" },
-  other: { bg: "#f3f4f6", text: "#374151" },
+  work: { bg: "#ffe0e8", text: "#c73d5c" },
+  family: { bg: "#fff0c8", text: "#b07a12" },
+  hobbies: { bg: "#eadcff", text: "#6b3db8" },
+  extracurriculars: { bg: "#d4f7f2", text: "#1a8f84" },
+  other: { bg: "#fde8d8", text: "#9a6e62" },
 };
 
 async function resolveApiBase(): Promise<string> {
@@ -73,7 +78,7 @@ export function TaskListScreen() {
   const { data, refetch, isLoading, isError } = useGetActionQueue();
   const updateAction = useUpdateAction();
   const deleteAction = useDeleteAction();
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorder = useAudioRecorder(RECORD_OPTIONS);
   const [refreshing, setRefreshing] = useState(false);
   const [refiningId, setRefiningId] = useState<number | null>(null);
   const [isRefining, setIsRefining] = useState(false);
@@ -130,7 +135,14 @@ export function TaskListScreen() {
   const stopAndRefine = useCallback(
     async (id: number) => {
       try {
-        await recorder.stop();
+        try {
+          const status = recorder.getStatus();
+          if (status.isRecording || status.canRecord) {
+            await recorder.stop();
+          }
+        } catch {
+          // already stopped
+        }
         setRefiningId(null);
         const uri = recorder.uri;
         if (!uri) return;
@@ -231,14 +243,20 @@ export function TaskListScreen() {
           return;
         }
         await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
-        if (refiningId != null) {
-          await recorder.stop().catch(() => {});
+        try {
+          const current = recorder.getStatus();
+          if (current.isRecording || current.canRecord) {
+            await recorder.stop();
+          }
+        } catch {
+          // nothing to stop
         }
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        await recorder.prepareToRecordAsync();
+        await recorder.prepareToRecordAsync(RECORD_OPTIONS);
         recorder.record();
         setRefiningId(id);
       } catch {
+        setRefiningId(null);
         Alert.alert("Mic unavailable", "Please grant microphone permission in Settings.");
       }
     },
@@ -248,11 +266,11 @@ export function TaskListScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
       <View style={styles.header}>
-        <Text style={styles.title}>Tasks</Text>
+        <Text style={styles.title}>Your pile</Text>
         <Text style={styles.sub}>
           {queue.length === 0
-            ? "Speak on the home tab to add tasks"
-            : "Swipe right to finish · swipe left to delete"}
+            ? "Empty on purpose. Go speak something into existence."
+            : "Swipe right when it’s done · left to toss it"}
         </Text>
       </View>
       <SectionList
@@ -261,6 +279,10 @@ export function TaskListScreen() {
         stickySectionHeadersEnabled={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
+        initialNumToRender={8}
+        maxToRenderPerBatch={6}
+        windowSize={7}
+        removeClippedSubviews
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.accent} />
@@ -272,7 +294,7 @@ export function TaskListScreen() {
             </View>
           ) : !isLoading ? (
             <View style={styles.empty}>
-              <Text style={styles.emptyText}>No tasks yet. Go to Speak and say something.</Text>
+              <Text style={styles.emptyText}>No tasks yet. Pop over to Speak and say the thing.</Text>
             </View>
           ) : null
         }
@@ -382,7 +404,7 @@ const styles = StyleSheet.create({
   listContent: { paddingHorizontal: 16, paddingBottom: 32 },
   swipeWrap: {
     marginBottom: 10,
-    borderRadius: 16,
+    borderRadius: 20,
     overflow: "hidden",
   },
   swipeFill: {
@@ -402,7 +424,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: COLORS.hairline,
-    borderRadius: 16,
+    borderRadius: 20,
   },
   cardTitle: {
     fontFamily: "Inter_500Medium",
@@ -436,7 +458,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
     borderWidth: 1,
     borderColor: COLORS.hairline,
-    borderRadius: 10,
+    borderRadius: 16,
     paddingHorizontal: 12,
     paddingVertical: 10,
     minHeight: 64,
@@ -448,7 +470,7 @@ const styles = StyleSheet.create({
   },
   refineBtn: {
     flex: 1,
-    borderRadius: 10,
+    borderRadius: 999,
     borderWidth: 1,
     borderColor: COLORS.accent + "44",
     paddingHorizontal: 14,
@@ -457,7 +479,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   speakBtn: {
-    borderRadius: 10,
+    borderRadius: 999,
     borderWidth: 1,
     borderColor: COLORS.accent + "44",
     paddingHorizontal: 14,

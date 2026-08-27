@@ -1,42 +1,42 @@
 const colors = {
   light: {
-    text: "#1c2331",
-    tint: "#e06b53",
+    text: "#3a241e",
+    tint: "#ff5a7a",
 
-    background: "#fdfbf7",
-    foreground: "#1c2331",
+    background: "#fff3e6",
+    foreground: "#3a241e",
 
     card: "#ffffff",
-    cardForeground: "#1c2331",
+    cardForeground: "#3a241e",
 
-    primary: "#e06b53",
+    primary: "#ff5a7a",
     primaryForeground: "#ffffff",
 
-    secondary: "#8a9a86",
+    secondary: "#3ecfc1",
     secondaryForeground: "#ffffff",
 
-    muted: "#f5f3ef",
-    mutedForeground: "#65708a",
+    muted: "#fff8ef",
+    mutedForeground: "#a06d62",
 
-    accent: "#efeae1",
-    accentForeground: "#1c2331",
+    accent: "#ffe7d6",
+    accentForeground: "#3a241e",
 
     destructive: "#ef4444",
     destructiveForeground: "#ffffff",
 
-    border: "#e8e4db",
-    input: "#e8e4db",
+    border: "#f5d5c4",
+    input: "#f5d5c4",
 
-    categoryWork: "#dbeafe",
-    categoryWorkText: "#1e40af",
-    categoryFamily: "#fef3c7",
-    categoryFamilyText: "#92400e",
-    categoryHobbies: "#ede9fe",
-    categoryHobbiesText: "#6d28d9",
-    categoryExtracurriculars: "#ccfbf1",
-    categoryExtracurricularsText: "#134e4a",
-    categoryOther: "#f3f4f6",
-    categoryOtherText: "#374151",
+    categoryWork: "#ffe0e8",
+    categoryWorkText: "#c73d5c",
+    categoryFamily: "#fff0c8",
+    categoryFamilyText: "#b07a12",
+    categoryHobbies: "#eadcff",
+    categoryHobbiesText: "#6b3db8",
+    categoryExtracurriculars: "#d4f7f2",
+    categoryExtracurricularsText: "#1a8f84",
+    categoryOther: "#fde8d8",
+    categoryOtherText: "#9a6e62",
 
     priorityHigh: "#fef2f2",
     priorityHighText: "#dc2626",
@@ -46,26 +46,26 @@ const colors = {
     priorityLowText: "#16a34a",
   },
   dark: {
-    text: "#fdfbf7",
-    tint: "#e06b53",
+    text: "#fff3e6",
+    tint: "#ff5a7a",
 
     background: "#1c2331",
-    foreground: "#fdfbf7",
+    foreground: "#fff3e6",
 
     card: "#232e42",
-    cardForeground: "#fdfbf7",
+    cardForeground: "#fff3e6",
 
-    primary: "#e06b53",
+    primary: "#ff5a7a",
     primaryForeground: "#ffffff",
 
-    secondary: "#8a9a86",
+    secondary: "#3ecfc1",
     secondaryForeground: "#ffffff",
 
     muted: "#2a3548",
     mutedForeground: "#8a96aa",
 
     accent: "#2a3548",
-    accentForeground: "#fdfbf7",
+    accentForeground: "#fff3e6",
 
     destructive: "#ef4444",
     destructiveForeground: "#ffffff",
@@ -91,7 +91,7 @@ const colors = {
     priorityLow: "#052e16",
     priorityLowText: "#86efac",
   },
-  radius: 8,
+  radius: 16,
 };
 
 export default colors;

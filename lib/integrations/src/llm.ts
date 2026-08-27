@@ -125,15 +125,34 @@ export function createChatClient(config = resolveChatConfig()): OpenAI {
   });
 }
 
+export type ChatJsonOptions = {
+  temperature?: number;
+  responseSchema?: Record<string, unknown>;
+};
+
 async function completeJsonWithConfig(
   config: ChatConfig,
   messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+  options: ChatJsonOptions = {},
 ): Promise<string> {
   const client = createChatClient(config);
+  const temperature = options.temperature ?? 0.2;
+  const responseFormat = options.responseSchema
+    ? ({
+        type: "json_schema",
+        json_schema: {
+          name: "voice_todo_router",
+          strict: false,
+          schema: options.responseSchema,
+        },
+      } as OpenAI.Chat.Completions.ChatCompletionCreateParams["response_format"])
+    : ({ type: "json_object" } as const);
+
   try {
     const response = await client.chat.completions.create({
       model: config.model,
-      response_format: { type: "json_object" },
+      temperature,
+      response_format: responseFormat,
       messages,
     });
     const raw = response.choices[0]?.message?.content;
@@ -142,15 +161,28 @@ async function completeJsonWithConfig(
     }
     return raw;
   } catch (err) {
-    const response = await client.chat.completions.create({
-      model: config.model,
-      messages,
-    });
-    const raw = response.choices[0]?.message?.content;
-    if (!raw) {
-      throw err instanceof Error ? err : new Error("Empty LLM response");
+    try {
+      const response = await client.chat.completions.create({
+        model: config.model,
+        temperature,
+        response_format: { type: "json_object" },
+        messages,
+      });
+      const raw = response.choices[0]?.message?.content;
+      if (!raw) throw err;
+      return raw;
+    } catch {
+      const response = await client.chat.completions.create({
+        model: config.model,
+        temperature,
+        messages,
+      });
+      const raw = response.choices[0]?.message?.content;
+      if (!raw) {
+        throw err instanceof Error ? err : new Error("Empty LLM response");
+      }
+      return raw;
     }
-    return raw;
   }
 }
 
@@ -160,6 +192,7 @@ function errorMessage(err: unknown): string {
 
 export async function chatCompletionJson(
   messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+  options: ChatJsonOptions = {},
 ): Promise<string> {
   const gemini = resolveGeminiConfig();
   const openrouter = resolveOpenRouterConfig();
@@ -167,7 +200,7 @@ export async function chatCompletionJson(
 
   if (gemini) {
     try {
-      return await completeJsonWithConfig(gemini, messages);
+      return await completeJsonWithConfig(gemini, messages, options);
     } catch (err) {
       errors.push(`gemini: ${errorMessage(err)}`);
     }
@@ -175,14 +208,14 @@ export async function chatCompletionJson(
 
   if (openrouter) {
     try {
-      return await completeJsonWithConfig(openrouter, messages);
+      return await completeJsonWithConfig(openrouter, messages, options);
     } catch (err) {
       errors.push(`openrouter: ${errorMessage(err)}`);
     }
   }
 
   if (!gemini && !openrouter) {
-    return completeJsonWithConfig(resolveChatConfig(), messages);
+    return completeJsonWithConfig(resolveChatConfig(), messages, options);
   }
 
   throw new Error(`LLM request failed (${errors.join("; ") || "no providers configured"})`);

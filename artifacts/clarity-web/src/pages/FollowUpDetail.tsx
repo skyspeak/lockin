@@ -18,7 +18,7 @@ export default function FollowUpDetail() {
   const listKey = getListFollowUpPlansUrl();
 
   const planId = Number.isInteger(id) && id > 0 ? id : 0;
-  const { data: plan, isLoading, refetch } = useGetFollowUpPlan(planId);
+  const { data: plan, isLoading, isError, refetch } = useGetFollowUpPlan(planId);
 
   useEffect(() => {
     if (plan?.status !== "generating") return;
@@ -37,10 +37,21 @@ export default function FollowUpDetail() {
     },
   });
 
-  if (isLoading || !plan) {
+  if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#fdfbf7] flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-[#c8553d]" />
+      <div className="min-h-screen bg-[#fff3e6] flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-[#ff5a7a]" />
+      </div>
+    );
+  }
+
+  if (!planId || isError || !plan) {
+    return (
+      <div className="min-h-screen bg-[#fff3e6] text-[#3a241e] flex flex-col items-center justify-center px-6">
+        <p className="text-sm text-[#a06d62] mb-4">That follow-up wasn’t found.</p>
+        <Link href="/follow-ups" className="text-sm font-semibold text-[#ff5a7a]">
+          Back to follow-ups
+        </Link>
       </div>
     );
   }
@@ -50,30 +61,30 @@ export default function FollowUpDetail() {
   };
 
   return (
-    <div className="min-h-screen bg-[#fdfbf7] text-[#1a1715]">
+    <div className="min-h-screen bg-[#fff3e6] text-[#3a241e]">
       <div className="mx-auto max-w-xl px-6 pt-12 pb-24">
         <Link
           href="/follow-ups"
-          className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#c8553d] hover:text-[#a8412e] mb-8"
+          className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#ff5a7a] hover:text-[#e63e64] mb-8"
         >
           <ArrowLeft className="h-4 w-4" />
           All follow-ups
         </Link>
 
         <header className="mb-8">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[#7a716b] mb-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#a06d62] mb-2">
             Original task
           </p>
           <h1 className="text-2xl font-bold leading-snug">{plan.actionTitle}</h1>
-          <p className="mt-2 text-sm text-[#7a716b]">
+          <p className="mt-2 text-sm text-[#a06d62]">
             {formatDistanceToNow(new Date(plan.createdAt), { addSuffix: true })}
           </p>
         </header>
 
         {plan.status === "generating" && (
-          <div className="flex items-center gap-3 rounded-2xl border border-[#ebe5dd] bg-white p-6 mb-6">
-            <Loader2 className="h-5 w-5 animate-spin text-[#c8553d]" />
-            <p className="text-sm text-[#7a716b]">Building your follow-up plan…</p>
+          <div className="flex items-center gap-3 rounded-2xl border border-[#f5d5c4] bg-white p-6 mb-6">
+            <Loader2 className="h-5 w-5 animate-spin text-[#ff5a7a]" />
+            <p className="text-sm text-[#a06d62]">Building your follow-up plan…</p>
           </div>
         )}
 
@@ -87,7 +98,7 @@ export default function FollowUpDetail() {
 
         {plan.summary && (
           <section className="mb-8">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-[#7a716b] mb-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-[#a06d62] mb-3">
               Summary
             </h2>
             <p className="text-[15px] leading-relaxed">{plan.summary}</p>
@@ -96,16 +107,16 @@ export default function FollowUpDetail() {
 
         {plan.steps.length > 0 && (
           <section className="mb-8">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-[#7a716b] mb-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-[#a06d62] mb-3">
               Action plan
             </h2>
             <ol className="space-y-3">
               {plan.steps.map((step, index) => (
                 <li
                   key={index}
-                  className="flex gap-3 rounded-xl border border-[#ebe5dd] bg-white p-4"
+                  className="flex gap-3 rounded-xl border border-[#f5d5c4] bg-white p-4"
                 >
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#c8553d] text-xs font-bold text-white">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#ff5a7a] text-xs font-bold text-white">
                     {index + 1}
                   </span>
                   <p className="text-[15px] leading-snug pt-0.5">{step}</p>
@@ -117,25 +128,25 @@ export default function FollowUpDetail() {
 
         {plan.userTodos.length > 0 && (
           <section className="mb-8">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-[#7a716b] mb-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-[#a06d62] mb-3">
               Your TODOs
             </h2>
             <ul className="space-y-2">
               {plan.userTodos.map((todo) => (
                 <li
                   key={todo.id}
-                  className="flex items-start gap-3 rounded-xl border border-[#ebe5dd] bg-white p-4"
+                  className="flex items-start gap-3 rounded-xl border border-[#f5d5c4] bg-white p-4"
                 >
                   <Checkbox
                     id={todo.id}
                     checked={todo.done}
                     disabled={toggleTodo.isPending}
                     onCheckedChange={(checked) => toggle(todo.id, checked === true)}
-                    className="mt-0.5 border-[#c8553d] data-[state=checked]:bg-[#c8553d] data-[state=checked]:border-[#c8553d]"
+                    className="mt-0.5 border-[#ff5a7a] data-[state=checked]:bg-[#ff5a7a] data-[state=checked]:border-[#ff5a7a]"
                   />
                   <label
                     htmlFor={todo.id}
-                    className={`text-[15px] leading-snug cursor-pointer ${todo.done ? "line-through text-[#7a716b]" : ""}`}
+                    className={`text-[15px] leading-snug cursor-pointer ${todo.done ? "line-through text-[#a06d62]" : ""}`}
                   >
                     {todo.text}
                   </label>

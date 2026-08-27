@@ -22,13 +22,13 @@ function timeAgo(iso: string): string {
 }
 
 const COLORS = {
-  bg: "#fdfbf7",
-  ink: "#1a1715",
-  inkDim: "#7a716b",
-  hairline: "#ebe5dd",
+  bg: "#fff3e6",
+  ink: "#3a241e",
+  inkDim: "#a06d62",
+  hairline: "#f5d5c4",
   card: "#ffffff",
-  accent: "#c8553d",
-  green: "#5d7a4a",
+  accent: "#ff5a7a",
+  green: "#2aa89c",
   amber: "#b8862c",
   red: "#c0392b",
 };

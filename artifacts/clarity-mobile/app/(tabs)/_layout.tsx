@@ -10,11 +10,11 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: "#c8553d",
-        tabBarInactiveTintColor: "#7a716b",
+        tabBarActiveTintColor: "#ff5a7a",
+        tabBarInactiveTintColor: "#a06d62",
         tabBarStyle: {
-          backgroundColor: "#fdfbf7",
-          borderTopColor: "#ebe5dd",
+          backgroundColor: "#fff3e6",
+          borderTopColor: "#f5d5c4",
           paddingTop: 4,
           height: Platform.OS === "ios" ? 88 : 64,
         },
@@ -28,14 +28,14 @@ export default function TabLayout() {
         name="index"
         options={{
           title: "Speak",
-          tabBarIcon: ({ color }) => <TabIcon emoji="🎤" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon emoji="🎙️" color={color} />,
         }}
       />
       <Tabs.Screen
         name="tasks"
         options={{
-          title: "Tasks",
-          tabBarIcon: ({ color }) => <TabIcon emoji="✓" color={color} />,
+          title: "Pile",
+          tabBarIcon: ({ color }) => <TabIcon emoji="✨" color={color} />,
         }}
       />
       <Tabs.Screen
@@ -47,8 +47,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="settings"
         options={{
-          title: "Settings",
-          tabBarIcon: ({ color }) => <TabIcon emoji="⚙" color={color} />,
+          title: "Nest",
+          tabBarIcon: ({ color }) => <TabIcon emoji="🌙" color={color} />,
         }}
       />
     </Tabs>
@@ -56,5 +56,5 @@ export default function TabLayout() {
 }
 
 function TabIcon({ emoji, color }: { emoji: string; color: string }) {
-  return <Text style={{ fontSize: 20, color, opacity: color === "#c8553d" ? 1 : 0.7 }}>{emoji}</Text>;
+  return <Text style={{ fontSize: 22, color, opacity: color === "#ff5a7a" ? 1 : 0.72 }}>{emoji}</Text>;
 }

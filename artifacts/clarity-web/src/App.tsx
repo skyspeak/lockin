@@ -5,6 +5,8 @@ import { setAuthTokenGetter } from "@workspace/api-client-react";
 import { Toaster } from "@/components/ui/toaster";
 import Home from "@/pages/Home";
 import Login from "@/pages/Login";
+import FollowUps from "@/pages/FollowUps";
+import FollowUpDetail from "@/pages/FollowUpDetail";
 import { PrivacyPage, TermsPage } from "@/pages/Legal";
 import { AccountBar } from "@/components/AccountBar";
 import { ApiKeyContext } from "@/lib/auth-context";
@@ -54,6 +56,8 @@ export default function App() {
         <AccountBar token={apiKey} onLogout={handleLogout} />
         <Switch>
           <Route path="/" component={Home} />
+          <Route path="/follow-ups" component={FollowUps} />
+          <Route path="/follow-ups/:id" component={FollowUpDetail} />
         </Switch>
         <Toaster />
       </QueryClientProvider>
