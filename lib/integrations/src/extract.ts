@@ -670,7 +670,7 @@ export async function extractFromThought(
   }
 
   if (parsed.data.items.length === 0) {
-    return { actions: [], events: [], items: [] };
+    return { actions: [fallbackAction(clipped)], events: [], items: [] };
   }
 
   return mapRouterToExtract(parsed.data.items, clipped);

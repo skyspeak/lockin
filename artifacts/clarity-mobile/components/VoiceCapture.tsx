@@ -13,15 +13,22 @@ import {
 import { useFocusEffect } from "expo-router";
 import * as Haptics from "expo-haptics";
 import {
-  AudioModule,
-  RecordingPresets,
-  setAudioModeAsync,
   useAudioRecorder,
 } from "expo-audio";
 import { getGetActionQueueUrl } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useApiKey } from "@/components/AuthContext";
 import { getApiBasePath, resolveDefaultApiOrigin } from "@/constants/api";
+import { alertCaptureFailure } from "@/lib/captureAlerts";
+import {
+  RECORD_OPTIONS,
+  beginRecording,
+  recorderIsLive,
+  recordingTooShort,
+  releaseAudioSession,
+  stopActiveRecording,
+  uploadCaptureAudio,
+} from "@/lib/recording";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const COLORS = {
@@ -35,22 +42,12 @@ const COLORS = {
 const SERVER_STORAGE_KEY = "clarity_api_server_url";
 const CAPTURE_MODE_KEY = "lockin_capture_mode";
 
-/** Always pass options into prepare so iOS recreates AVAudioRecorder (reuse after stop crashes). */
-const RECORD_OPTIONS = {
-  ...RecordingPresets.HIGH_QUALITY,
-  isMeteringEnabled: true,
-};
-
 export type CaptureMode = "tasks" | "transcribe";
 
 async function resolveApiBase(): Promise<string> {
   const stored = await AsyncStorage.getItem(SERVER_STORAGE_KEY);
   const origin = stored || resolveDefaultApiOrigin();
   return getApiBasePath(origin);
-}
-
-function wait(ms: number) {
-  return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
 export function useVoiceCapture() {
@@ -124,93 +121,86 @@ export function useVoiceCapture() {
     }).catch(() => {});
   }, []);
 
-  const hardStopRecorder = useCallback(async () => {
-    try {
-      const status = recorder.getStatus();
-      if (status.isRecording || status.canRecord) {
-        await recorder.stop();
-      }
-    } catch {
-      // already stopped / not prepared
-    }
+  const resetRecordingUi = useCallback(() => {
     recordingRef.current = false;
     setIsRecording(false);
-  }, [recorder]);
+  }, []);
 
   const startRecording = useCallback(async () => {
     await withMicLock(async () => {
       if (recordingRef.current || transcribingRef.current || !focusedRef.current) return;
-      recordingRef.current = true;
       try {
-        const status = await AudioModule.requestRecordingPermissionsAsync();
-        if (!status.granted) {
-          recordingRef.current = false;
-          setIsRecording(false);
-          Alert.alert("Mic unavailable", "Please grant microphone permission in Settings.");
-          return;
-        }
+        await beginRecording(recorder);
         if (!focusedRef.current || transcribingRef.current) {
-          recordingRef.current = false;
+          if (recorderIsLive(recorder)) {
+            await stopActiveRecording(recorder);
+          }
+          resetRecordingUi();
           return;
         }
-
-        await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
-        // Stop any leftover session, then always re-prepare WITH options so iOS
-        // allocates a fresh AVAudioRecorder file (required after the first stop).
-        await hardStopRecorder();
-        await wait(60);
-        if (!focusedRef.current || transcribingRef.current) {
-          recordingRef.current = false;
-          return;
-        }
-
-        await recorder.prepareToRecordAsync(RECORD_OPTIONS);
-        if (!focusedRef.current || transcribingRef.current) {
-          await hardStopRecorder();
-          return;
-        }
-        recorder.record();
         recordingRef.current = true;
         setIsRecording(true);
-      } catch {
-        recordingRef.current = false;
-        setIsRecording(false);
-        try {
-          await hardStopRecorder();
-        } catch {
-          // ignore
+      } catch (err) {
+        resetRecordingUi();
+        if (err instanceof Error && err.message === "MIC_PERMISSION_DENIED") {
+          Alert.alert("Mic unavailable", "Please grant microphone permission in Settings.");
+        } else {
+          Alert.alert("Mic didn't start", "Tap the mic to try again.");
         }
       }
     });
-  }, [hardStopRecorder, recorder, withMicLock]);
+  }, [recorder, resetRecordingUi, withMicLock]);
   startRecordingRef.current = startRecording;
 
   const stopOnly = useCallback(async () => {
     clearRestartTimer();
     await withMicLock(async () => {
-      await hardStopRecorder();
+      if (recorderIsLive(recorder)) {
+        try {
+          await recorder.stop();
+        } catch {
+          // already stopped
+        }
+      }
+      resetRecordingUi();
+      await releaseAudioSession();
     });
-  }, [clearRestartTimer, hardStopRecorder, withMicLock]);
+  }, [clearRestartTimer, recorder, resetRecordingUi, withMicLock]);
 
   const stopAndTranscribe = useCallback(async () => {
-    if (!recordingRef.current || transcribingRef.current) return;
+    if (transcribingRef.current) return;
+    if (!apiKey.trim()) {
+      Alert.alert("Not signed in", "Log out and sign in again from Settings.");
+      return;
+    }
+
+    const live = recordingRef.current || recorderIsLive(recorder);
+    if (!live) {
+      void startRecordingRef.current();
+      return;
+    }
+
     clearRestartTimer();
 
-    const stoppedUri = await withMicLock(async () => {
-      if (!recordingRef.current || transcribingRef.current) return null;
-      try {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-        await recorder.stop();
-      } catch {
-        // already stopped
+    const capture = await withMicLock(async () => {
+      if (!recordingRef.current && !recorderIsLive(recorder)) {
+        return null;
       }
-      recordingRef.current = false;
-      setIsRecording(false);
-      return recorder.uri;
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      const stopped = await stopActiveRecording(recorder);
+      resetRecordingUi();
+      return stopped;
     });
 
-    if (!stoppedUri) {
-      scheduleRestart(400);
+    if (!capture?.uri) {
+      Alert.alert("Couldn't save that clip", "Tap the mic, speak for a second, then tap again.");
+      if (focusedRef.current) scheduleRestart(400);
+      return;
+    }
+
+    if (recordingTooShort(capture.durationMillis)) {
+      Alert.alert("Too short", "Speak for at least a second, then tap to lock it in.");
+      if (focusedRef.current) scheduleRestart(400);
       return;
     }
 
@@ -218,19 +208,9 @@ export function useVoiceCapture() {
     setIsTranscribing(true);
 
     try {
-      const form = new FormData();
-      const ext = stoppedUri.split(".").pop() || "m4a";
-      const mime = ext === "m4a" ? "audio/m4a" : `audio/${ext}`;
-      // @ts-ignore
-      form.append("audio", { uri: stoppedUri, name: `audio.${ext}`, type: mime });
-
       const apiBase = await resolveApiBase();
       const mode = captureModeRef.current;
-      const res = await fetch(`${apiBase}/capture?mode=${mode}`, {
-        method: "POST",
-        body: form,
-        headers: { Authorization: `Bearer ${apiKey}` },
-      });
+      const res = await uploadCaptureAudio(apiBase, apiKey, capture.uri, mode);
       if (!res.ok) {
         let detail = "";
         try {
@@ -239,19 +219,7 @@ export function useVoiceCapture() {
         } catch {
           detail = "";
         }
-        if (res.status === 401) {
-          Alert.alert(
-            "Session expired",
-            "Log out in Settings, then sign in again.",
-          );
-        } else if (res.status === 415 || /unsupported audio/i.test(detail)) {
-          Alert.alert("Couldn't read that recording", "Try speaking again for a couple of seconds.");
-        } else {
-          Alert.alert(
-            mode === "transcribe" ? "Couldn't transcribe that" : "Couldn't turn that into tasks",
-            detail || `Server returned ${res.status}. Check GEMINI_API_KEY on Railway.`,
-          );
-        }
+        alertCaptureFailure(mode, res.status, detail);
         return;
       }
       const json = (await res.json()) as {
@@ -314,13 +282,13 @@ export function useVoiceCapture() {
         // Deep solve map already attached to the task — light confirmation.
       }
     } catch {
-      Alert.alert("Couldn't turn that into tasks", "Please try again.");
+      Alert.alert("Couldn't reach Lock In", "Check your connection and try again.");
     } finally {
       transcribingRef.current = false;
       setIsTranscribing(false);
       if (focusedRef.current) scheduleRestart(450);
     }
-  }, [apiKey, clearRestartTimer, invalidateQueue, recorder, scheduleRestart, withMicLock]);
+  }, [apiKey, clearRestartTimer, invalidateQueue, recorder, resetRecordingUi, scheduleRestart, withMicLock]);
 
   useFocusEffect(
     useCallback(() => {
@@ -351,7 +319,8 @@ export function useVoiceCapture() {
 
   const onMicPress = () => {
     if (isTranscribing) return;
-    if (isRecording) void stopAndTranscribe();
+    const live = recordingRef.current || recorderIsLive(recorder);
+    if (live) void stopAndTranscribe();
     else void startRecording();
   };
 

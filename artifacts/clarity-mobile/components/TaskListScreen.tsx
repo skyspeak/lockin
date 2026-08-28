@@ -4,9 +4,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import Swipeable from "react-native-gesture-handler/Swipeable";
 import * as Haptics from "expo-haptics";
 import {
-  AudioModule,
-  RecordingPresets,
-  setAudioModeAsync,
   useAudioRecorder,
 } from "expo-audio";
 import {
@@ -19,6 +16,14 @@ import { useQueryClient } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useApiKey } from "@/components/AuthContext";
 import { getApiBasePath, resolveDefaultApiOrigin } from "@/constants/api";
+import {
+  RECORD_OPTIONS,
+  beginRecording,
+  mimeForRecordingUri,
+  recorderIsLive,
+  recordingTooShort,
+  stopActiveRecording,
+} from "@/lib/recording";
 
 const COLORS = {
   bg: "#fff3e6",
@@ -29,11 +34,6 @@ const COLORS = {
   accent: "#ff5a7a",
   green: "#2aa89c",
   red: "#c0392b",
-};
-
-const RECORD_OPTIONS = {
-  ...RecordingPresets.HIGH_QUALITY,
-  isMeteringEnabled: false,
 };
 
 const SERVER_STORAGE_KEY = "clarity_api_server_url";
@@ -135,24 +135,22 @@ export function TaskListScreen() {
   const stopAndRefine = useCallback(
     async (id: number) => {
       try {
-        try {
-          const status = recorder.getStatus();
-          if (status.isRecording || status.canRecord) {
-            await recorder.stop();
-          }
-        } catch {
-          // already stopped
-        }
+        const stopped = await stopActiveRecording(recorder);
         setRefiningId(null);
-        const uri = recorder.uri;
-        if (!uri) return;
+        if (!stopped.uri) {
+          Alert.alert("Couldn't save that clip", "Tap Speak, say your refinement, then tap again.");
+          return;
+        }
+        if (recordingTooShort(stopped.durationMillis)) {
+          Alert.alert("Too short", "Speak your refinement for at least a second.");
+          return;
+        }
 
         setIsRefining(true);
         const form = new FormData();
-        const ext = uri.split(".").pop() || "m4a";
-        const mime = ext === "m4a" ? "audio/m4a" : `audio/${ext}`;
+        const { ext, mime } = mimeForRecordingUri(stopped.uri);
         // @ts-ignore
-        form.append("audio", { uri, name: `audio.${ext}`, type: mime });
+        form.append("audio", { uri: stopped.uri, name: `audio.${ext}`, type: mime });
 
         const apiBase = await resolveApiBase();
         const res = await fetch(`${apiBase}/actions/${id}/refine`, {
@@ -237,27 +235,19 @@ export function TaskListScreen() {
       }
 
       try {
-        const status = await AudioModule.requestRecordingPermissionsAsync();
-        if (!status.granted) {
-          Alert.alert("Mic unavailable", "Please grant microphone permission in Settings.");
-          return;
+        if (refiningId !== null && recorderIsLive(recorder)) {
+          await stopActiveRecording(recorder);
         }
-        await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
-        try {
-          const current = recorder.getStatus();
-          if (current.isRecording || current.canRecord) {
-            await recorder.stop();
-          }
-        } catch {
-          // nothing to stop
-        }
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        await recorder.prepareToRecordAsync(RECORD_OPTIONS);
-        recorder.record();
+        await beginRecording(recorder);
         setRefiningId(id);
-      } catch {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      } catch (err) {
         setRefiningId(null);
-        Alert.alert("Mic unavailable", "Please grant microphone permission in Settings.");
+        if (err instanceof Error && err.message === "MIC_PERMISSION_DENIED") {
+          Alert.alert("Mic unavailable", "Please grant microphone permission in Settings.");
+        } else {
+          Alert.alert("Mic didn't start", "Tap Speak and try again.");
+        }
       }
     },
     [isRefining, recorder, refiningId, stopAndRefine],

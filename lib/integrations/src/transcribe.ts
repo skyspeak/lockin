@@ -14,7 +14,7 @@ function normalizeGeminiAudioMime(mime: string): string {
 
 function geminiModels(): string[] {
   const preferred = process.env.GEMINI_MODEL?.trim();
-  return [...new Set([preferred, "gemini-3.5-flash", "gemini-2.5-flash"].filter(Boolean))] as string[];
+  return [...new Set([preferred, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-flash-lite"].filter(Boolean))] as string[];
 }
 
 type GeminiGenerateResponse = {
