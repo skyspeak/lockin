@@ -170,20 +170,21 @@ export default function Home() {
             emails?: Array<{ title: string; subject: string; to: string[]; sent: boolean; error?: string }>;
             research?: Array<{ title: string; type?: string; answer: string }>;
           };
+          const items = (json.actions ?? [])
+            .map((a) => ({ title: a.title, nextSteps: a.nextSteps ?? [] }))
+            .filter((a) => a.title);
+          const text = json.transcript?.trim() || "";
           if (mode === "transcribe") {
-            const text = json.transcript?.trim() || "";
-            if (!text) {
+            if (!text && items.length === 0) {
               toastRef.current({ title: "Nothing captured", description: "Try speaking again." });
               return;
             }
             setLastTranscript(text);
-            setLastCaptured([]);
-            toastRef.current({ title: "Transcribed" });
+            setLastCaptured(items);
+            invalidateRef.current();
+            toastRef.current({ title: "In the pile" });
             return;
           }
-          const items = (json.actions ?? [])
-            .map((a) => ({ title: a.title, nextSteps: a.nextSteps ?? [] }))
-            .filter((a) => a.title);
           if (items.length === 0) {
             toastRef.current({ title: "Nothing captured", description: "Try speaking again." });
             return;
@@ -520,7 +521,7 @@ export default function Home() {
         {captureMode === "transcribe" && lastTranscript && !isTranscribing && (
           <div className="mt-8 max-w-md w-full rounded-2xl border border-[#ff5a7a33] bg-white/80 px-4 py-3 text-left">
             <p className="text-xs font-semibold uppercase tracking-wide text-[#ff5a7a] mb-1">
-              Caught that
+              In the pile
             </p>
             <p className="text-sm text-[#3a241e] leading-relaxed">{lastTranscript}</p>
           </div>
@@ -555,7 +556,10 @@ export default function Home() {
       <section className="border-t border-[#f5d5c4] bg-white/85 backdrop-blur-sm rounded-t-3xl shadow-[0_-8px_30px_-12px_rgba(0,0,0,0.06)]">
         <button
           type="button"
-          onClick={() => setTasksOpen((o) => !o)}
+          onClick={() => {
+            if (!tasksOpen) invalidate();
+            setTasksOpen((o) => !o);
+          }}
           className="w-full flex items-center justify-between px-6 py-4 text-left"
           aria-expanded={tasksOpen}
         >

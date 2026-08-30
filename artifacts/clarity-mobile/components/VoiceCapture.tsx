@@ -231,20 +231,21 @@ export function useVoiceCapture() {
         research?: Array<{ title: string; type?: string; answer: string }>;
         kinds?: string[];
       };
+      const items = (json.actions ?? [])
+        .map((a) => ({ title: a.title, nextSteps: a.nextSteps ?? [] }))
+        .filter((a) => a.title);
+      const text = json.transcript?.trim() || "";
       if (mode === "transcribe") {
-        const text = json.transcript?.trim() || "";
-        if (!text) {
+        if (!text && items.length === 0) {
           Alert.alert("Nothing captured", "Try speaking again.");
           return;
         }
         setLastTranscript(text);
-        setLastCaptured([]);
+        setLastCaptured(items);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        invalidateQueue();
         return;
       }
-      const items = (json.actions ?? [])
-        .map((a) => ({ title: a.title, nextSteps: a.nextSteps ?? [] }))
-        .filter((a) => a.title);
       if (items.length === 0) {
         Alert.alert("Nothing captured", "Try speaking again.");
         return;
@@ -558,7 +559,7 @@ export function VoiceCaptureHero({
 
       {transcribeOnly && lastTranscript && !isTranscribing ? (
         <View style={styles.captured}>
-          <Text style={styles.capturedLabel}>CAUGHT THAT</Text>
+          <Text style={styles.capturedLabel}>IN THE PILE</Text>
           <Text style={styles.capturedText}>{lastTranscript}</Text>
         </View>
       ) : null}

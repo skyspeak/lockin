@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { eq } from "drizzle-orm";
 import { db, thoughtsTable, actionsTable } from "@workspace/db";
 import {
   transcribeAudio,
@@ -60,15 +61,34 @@ router.post("/", audioUpload.single("audio"), async (req, res) => {
     }
 
     if (mode === "transcribe") {
-      await db.insert(thoughtsTable).values({
-        userId,
-        content: transcript,
-        category: "other",
-      });
+      const [thought] = await db
+        .insert(thoughtsTable)
+        .values({
+          userId,
+          content: transcript,
+          category: "other",
+        })
+        .returning();
+
+      const title = transcript.trim().slice(0, 500) || "Voice note";
+      const [action] = await db
+        .insert(actionsTable)
+        .values({
+          userId,
+          title,
+          description: transcript.trim().slice(0, 2000),
+          category: "other",
+          priority: "medium",
+          thoughtId: thought.id,
+          nextSteps: ["Captured as a note"],
+        })
+        .returning();
+
       return res.json({
         transcript,
-        actions: [],
+        actions: [action],
         events: [],
+        kinds: ["note"],
       });
     }
 
@@ -84,9 +104,8 @@ router.post("/", audioUpload.single("audio"), async (req, res) => {
       return res.status(400).json({ error: "Nothing captured. Try speaking again." });
     }
 
-    // Go deeper: research / email polish / solve maps — not a dumb pipe.
-    const extracted = await fulfillExtractResult(routed, extractCtx);
-
+    // Commit the pile first. Fulfill (research / email / solve maps) can be
+    // slow or die on the proxy — that must not drop the tasks.
     const [thought] = await db
       .insert(thoughtsTable)
       .values({
@@ -96,10 +115,10 @@ router.post("/", audioUpload.single("audio"), async (req, res) => {
       })
       .returning();
 
-    const inserted = await db
+    let inserted = await db
       .insert(actionsTable)
       .values(
-        extracted.actions.map((item) => ({
+        routed.actions.map((item) => ({
           userId,
           title: item.title,
           description: item.description ?? null,
@@ -110,6 +129,35 @@ router.post("/", audioUpload.single("audio"), async (req, res) => {
         })),
       )
       .returning();
+
+    let extracted = routed;
+    try {
+      extracted = await fulfillExtractResult(routed, extractCtx);
+      inserted = await Promise.all(
+        inserted.map(async (action, index) => {
+          const item = extracted.actions[index];
+          if (!item) return action;
+          const [updated] = await db
+            .update(actionsTable)
+            .set({
+              title: item.title,
+              description: item.description ?? null,
+              category: item.category,
+              priority: item.priority,
+              nextSteps: item.nextSteps,
+              updatedAt: new Date(),
+            })
+            .where(eq(actionsTable.id, action.id))
+            .returning();
+          return updated ?? action;
+        }),
+      );
+    } catch (err) {
+      req.log.warn(
+        { err: err instanceof Error ? err.message : "unknown" },
+        "fulfill after capture failed; pile already has the tasks",
+      );
+    }
 
     await Promise.all(
       inserted.map(async (action, index) => {

@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from "react";
 import { Alert, Pressable, RefreshControl, SectionList, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Swipeable from "react-native-gesture-handler/Swipeable";
+import { useFocusEffect } from "expo-router";
 import * as Haptics from "expo-haptics";
 import {
   useAudioRecorder,
@@ -93,6 +94,12 @@ export function TaskListScreen() {
     await refetch();
     setRefreshing(false);
   }, [refetch]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refetch();
+    }, [refetch]),
+  );
 
   const queue = (data?.queue ?? []) as Action[];
   const sections = useMemo(() => {
