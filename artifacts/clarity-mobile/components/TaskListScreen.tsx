@@ -84,6 +84,7 @@ export function TaskListScreen() {
   const [refiningId, setRefiningId] = useState<number | null>(null);
   const [isRefining, setIsRefining] = useState(false);
   const [notes, setNotes] = useState<Record<number, string>>({});
+  const [openId, setOpenId] = useState<number | null>(null);
 
   const invalidateQueue = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: [queueUrl] });
@@ -263,11 +264,11 @@ export function TaskListScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
       <View style={styles.header}>
-        <Text style={styles.title}>Your pile</Text>
+        <Text style={styles.title}>Tasks</Text>
         <Text style={styles.sub}>
           {queue.length === 0
-            ? "Empty on purpose. Go speak something into existence."
-            : "Swipe right when it’s done · left to toss it"}
+            ? "Speak or type a to-do on the Speak tab."
+            : "Swipe right when done · left to delete"}
         </Text>
       </View>
       <SectionList
@@ -291,7 +292,7 @@ export function TaskListScreen() {
             </View>
           ) : !isLoading ? (
             <View style={styles.empty}>
-              <Text style={styles.emptyText}>No tasks yet. Pop over to Speak and say the thing.</Text>
+              <Text style={styles.emptyText}>No tasks yet. Speak or type one on the Speak tab.</Text>
             </View>
           ) : null
         }
@@ -304,6 +305,7 @@ export function TaskListScreen() {
           const category = item.category ?? "other";
           const chip = CATEGORY_COLORS[category] ?? CATEGORY_COLORS.other;
           const listening = refiningId === item.id;
+          const open = openId === item.id;
           return (
             <View style={styles.swipeWrap}>
               <Swipeable
@@ -345,44 +347,51 @@ export function TaskListScreen() {
                       {`• ${step}`}
                     </Text>
                   ))}
-                  <TextInput
-                    style={styles.noteInput}
-                    value={notes[item.id] ?? ""}
-                    onChangeText={(text) =>
-                      setNotes((current) => ({ ...current, [item.id]: text }))
-                    }
-                    placeholder="Type a refinement or paste a transcript…"
-                    placeholderTextColor={COLORS.inkDim}
-                    multiline
-                    editable={!isRefining}
-                  />
-                  <View style={styles.refineRow}>
-                    <Pressable
-                      onPress={() => void refineFromText(item.id)}
-                      disabled={isRefining}
-                      style={({ pressed }) => [
-                        styles.refineBtn,
-                        pressed && { opacity: 0.85 },
-                      ]}
-                    >
-                      <Text style={styles.refineText}>
-                        {isRefining && refiningId === item.id ? "Refining…" : "Refine"}
-                      </Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => void handleRefine(item.id)}
-                      disabled={isRefining && !listening}
-                      style={({ pressed }) => [
-                        styles.speakBtn,
-                        listening && styles.refineBtnActive,
-                        pressed && { opacity: 0.85 },
-                      ]}
-                    >
-                      <Text style={[styles.speakText, listening && styles.refineTextActive]}>
-                        {listening ? "Tap to stop" : "Speak"}
-                      </Text>
-                    </Pressable>
-                  </View>
+                  <Pressable onPress={() => setOpenId(open ? null : item.id)} hitSlop={8}>
+                    <Text style={styles.refineToggle}>{open ? "Hide refine" : "Refine"}</Text>
+                  </Pressable>
+                  {open ? (
+                    <>
+                      <TextInput
+                        style={styles.noteInput}
+                        value={notes[item.id] ?? ""}
+                        onChangeText={(text) =>
+                          setNotes((current) => ({ ...current, [item.id]: text }))
+                        }
+                        placeholder="Add detail…"
+                        placeholderTextColor={COLORS.inkDim}
+                        multiline
+                        editable={!isRefining}
+                      />
+                      <View style={styles.refineRow}>
+                        <Pressable
+                          onPress={() => void refineFromText(item.id)}
+                          disabled={isRefining}
+                          style={({ pressed }) => [
+                            styles.refineBtn,
+                            pressed && { opacity: 0.85 },
+                          ]}
+                        >
+                          <Text style={styles.refineText}>
+                            {isRefining && refiningId === item.id ? "Refining…" : "Apply"}
+                          </Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => void handleRefine(item.id)}
+                          disabled={isRefining && !listening}
+                          style={({ pressed }) => [
+                            styles.speakBtn,
+                            listening && styles.refineBtnActive,
+                            pressed && { opacity: 0.85 },
+                          ]}
+                        >
+                          <Text style={[styles.speakText, listening && styles.refineTextActive]}>
+                            {listening ? "Tap to stop" : "Speak"}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    </>
+                  ) : null}
                 </View>
               </Swipeable>
             </View>
@@ -451,6 +460,12 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bg,
   },
   refineRow: { flexDirection: "row", gap: 8, marginTop: 10 },
+  refineToggle: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 13,
+    color: COLORS.accent,
+    marginTop: 8,
+  },
   noteInput: {
     marginTop: 10,
     borderWidth: 1,

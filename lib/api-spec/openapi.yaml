@@ -35,7 +35,7 @@ paths:
     post:
       operationId: captureThought
       tags: [capture]
-      summary: Transcribe a voice note, extract classified actions, and attach next steps
+      summary: Capture a thought from audio or typed text, then extract actions
       security:
         - bearerAuth: []
       requestBody:
@@ -50,6 +50,19 @@ paths:
                   type: string
                   format: binary
                   description: Recorded voice note
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+                  minLength: 1
+                  maxLength: 4000
+                  description: Typed to-do or note
+                mode:
+                  type: string
+                  enum: [tasks, transcribe]
       responses:
         "200":
           description: Transcript, extracted actions, and next steps
@@ -58,7 +71,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/CaptureResult"
         "400":
-          description: Missing audio or empty transcript
+          description: Missing audio/text or empty transcript
           content:
             application/json:
               schema:

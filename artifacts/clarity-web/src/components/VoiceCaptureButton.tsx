@@ -17,27 +17,27 @@ export function VoiceCaptureButton({
   size = "large",
   voiceLevel = 0,
 }: VoiceCaptureButtonProps) {
-  const dim = size === "large" ? "h-32 w-32" : "h-28 w-28";
-  const iconDim = size === "large" ? "h-10 w-10" : "h-9 w-9";
+  const dim = size === "large" ? "h-24 w-24" : "h-20 w-20";
+  const iconDim = size === "large" ? "h-8 w-8" : "h-7 w-7";
   const listening = isRecording && !isTranscribing;
   const glow = 1.06 + voiceLevel * 0.45;
   const glowOpacity = 0.14 + voiceLevel * 0.32;
 
   return (
     <div className="flex flex-col items-center gap-2">
-      <div className="relative flex h-[18rem] w-[18rem] items-center justify-center">
+      <div className="relative flex h-36 w-36 items-center justify-center">
         {listening ? (
           <>
             <span
-              className="lockin-ripple pointer-events-none absolute h-32 w-32 rounded-full border-2 border-[#ff5a7a]"
+              className="lockin-ripple pointer-events-none absolute h-24 w-24 rounded-full border-2 border-[#ff5a7a]"
               style={{ animationDelay: "0s" }}
             />
             <span
-              className="lockin-ripple pointer-events-none absolute h-32 w-32 rounded-full border-2 border-[#3ecfc1]"
+              className="lockin-ripple pointer-events-none absolute h-24 w-24 rounded-full border-2 border-[#3ecfc1]"
               style={{ animationDelay: "1.1s" }}
             />
             <span
-              className="pointer-events-none absolute h-32 w-32 rounded-full bg-[#ff5a7a] will-change-transform"
+              className="pointer-events-none absolute h-24 w-24 rounded-full bg-[#ff5a7a] will-change-transform"
               style={{
                 transform: `scale(${glow})`,
                 opacity: glowOpacity,
@@ -63,7 +63,7 @@ export function VoiceCaptureButton({
           )}
         </button>
       </div>
-      <p className="text-sm text-[#a06d62] text-center max-w-xs -mt-6">
+      <p className="text-sm text-[#a06d62] text-center max-w-xs">
         {hint ??
           (isTranscribing
             ? "Cooking it…"

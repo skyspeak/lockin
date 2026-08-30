@@ -8,6 +8,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useFocusEffect } from "expo-router";
@@ -28,6 +29,7 @@ import {
   releaseAudioSession,
   stopActiveRecording,
   uploadCaptureAudio,
+  uploadCaptureText,
 } from "@/lib/recording";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -66,7 +68,6 @@ export function useVoiceCapture() {
   const transcribingRef = useRef(false);
   /** Serialize prepare/stop so a restart never overlaps a stop (native crash). */
   const micLockRef = useRef<Promise<void>>(Promise.resolve());
-  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startRecordingRef = useRef<() => Promise<void>>(async () => {});
   /** Drive glow off the JS thread without re-rendering the whole Speak screen. */
   const energyAnim = useRef(new Animated.Value(0.22)).current;
@@ -84,23 +85,6 @@ export function useVoiceCapture() {
       release();
     }
   }, []);
-
-  const clearRestartTimer = useCallback(() => {
-    if (restartTimerRef.current != null) {
-      clearTimeout(restartTimerRef.current);
-      restartTimerRef.current = null;
-    }
-  }, []);
-
-  const scheduleRestart = useCallback((delayMs = 400) => {
-    clearRestartTimer();
-    restartTimerRef.current = setTimeout(() => {
-      restartTimerRef.current = null;
-      if (focusedRef.current && !transcribingRef.current) {
-        void startRecordingRef.current();
-      }
-    }, delayMs);
-  }, [clearRestartTimer]);
 
   const invalidateQueue = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: [queueUrl] });
@@ -153,7 +137,6 @@ export function useVoiceCapture() {
   startRecordingRef.current = startRecording;
 
   const stopOnly = useCallback(async () => {
-    clearRestartTimer();
     await withMicLock(async () => {
       if (recorderIsLive(recorder)) {
         try {
@@ -165,7 +148,7 @@ export function useVoiceCapture() {
       resetRecordingUi();
       await releaseAudioSession();
     });
-  }, [clearRestartTimer, recorder, resetRecordingUi, withMicLock]);
+  }, [recorder, resetRecordingUi, withMicLock]);
 
   const stopAndTranscribe = useCallback(async () => {
     if (transcribingRef.current) return;
@@ -180,8 +163,6 @@ export function useVoiceCapture() {
       return;
     }
 
-    clearRestartTimer();
-
     const capture = await withMicLock(async () => {
       if (!recordingRef.current && !recorderIsLive(recorder)) {
         return null;
@@ -194,13 +175,11 @@ export function useVoiceCapture() {
 
     if (!capture?.uri) {
       Alert.alert("Couldn't save that clip", "Tap the mic, speak for a second, then tap again.");
-      if (focusedRef.current) scheduleRestart(400);
       return;
     }
 
     if (recordingTooShort(capture.durationMillis)) {
-      Alert.alert("Too short", "Speak for at least a second, then tap to lock it in.");
-      if (focusedRef.current) scheduleRestart(400);
+      Alert.alert("Too short", "Speak for at least a second, then tap to save.");
       return;
     }
 
@@ -287,36 +266,122 @@ export function useVoiceCapture() {
     } finally {
       transcribingRef.current = false;
       setIsTranscribing(false);
-      if (focusedRef.current) scheduleRestart(450);
     }
-  }, [apiKey, clearRestartTimer, invalidateQueue, recorder, resetRecordingUi, scheduleRestart, withMicLock]);
+  }, [apiKey, invalidateQueue, recorder, resetRecordingUi, withMicLock]);
+
+  const captureFromText = useCallback(async (raw: string): Promise<boolean> => {
+    const trimmed = raw.trim();
+    if (!trimmed || transcribingRef.current) return false;
+    if (!apiKey.trim()) {
+      Alert.alert("Not signed in", "Log out and sign in again from Settings.");
+      return false;
+    }
+
+    await stopOnly();
+    transcribingRef.current = true;
+    setIsTranscribing(true);
+    try {
+      const apiBase = await resolveApiBase();
+      const mode = captureModeRef.current;
+      const res = await uploadCaptureText(apiBase, apiKey, trimmed, mode);
+      if (!res.ok) {
+        let detail = "";
+        try {
+          const body = (await res.json()) as { error?: string };
+          detail = body.error ?? "";
+        } catch {
+          detail = "";
+        }
+        alertCaptureFailure(mode, res.status, detail);
+        return false;
+      }
+      const json = (await res.json()) as {
+        transcript?: string;
+        actions?: { title: string; nextSteps?: string[]; description?: string | null }[];
+        calendarCreated?: number;
+        calendarError?: string;
+        emails?: Array<{ title: string; subject: string; to: string[]; sent: boolean; error?: string }>;
+        research?: Array<{ title: string; type?: string; answer: string }>;
+        kinds?: string[];
+      };
+      const items = (json.actions ?? [])
+        .map((a) => ({ title: a.title, nextSteps: a.nextSteps ?? [] }))
+        .filter((a) => a.title);
+      const text = json.transcript?.trim() || trimmed;
+      if (mode === "transcribe") {
+        if (!text && items.length === 0) {
+          Alert.alert("Nothing captured", "Try a more specific note.");
+          return false;
+        }
+        setLastTranscript(text);
+        setLastCaptured(items);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        invalidateQueue();
+        return true;
+      }
+      if (items.length === 0) {
+        Alert.alert("Nothing captured", "Try a more specific to-do.");
+        return false;
+      }
+      setLastCaptured(items);
+      setLastTranscript("");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      invalidateQueue();
+
+      const sentEmails = (json.emails ?? []).filter((e) => e.sent);
+      const blockedEmails = (json.emails ?? []).filter((e) => !e.sent);
+      const researchBits = json.research ?? [];
+
+      if (researchBits.length > 0) {
+        Alert.alert(
+          researchBits.length === 1 ? "Research ready" : "Research locked in",
+          researchBits.map((r) => r.answer.slice(0, 280)).join("\n\n"),
+        );
+      } else if (sentEmails.length > 0) {
+        Alert.alert(
+          sentEmails.length === 1 ? "Email sent" : "Emails sent",
+          sentEmails.map((e) => `${e.subject} → ${e.to.join(", ")}`).join("\n"),
+        );
+      } else if (blockedEmails.length > 0) {
+        Alert.alert(
+          "Draft saved",
+          blockedEmails.map((e) => e.error || "Need a recipient email before sending.").join("\n"),
+        );
+      } else if (json.calendarCreated && json.calendarCreated > 0) {
+        Alert.alert("On your calendar", `${json.calendarCreated} event${json.calendarCreated === 1 ? "" : "s"} added.`);
+      } else if (json.calendarError) {
+        Alert.alert("Task saved", "Calendar invite did not send. Connect Gmail in Settings.");
+      }
+      return true;
+    } catch {
+      Alert.alert("Couldn't reach Lock In", "Check your connection and try again.");
+      return false;
+    } finally {
+      transcribingRef.current = false;
+      setIsTranscribing(false);
+    }
+  }, [apiKey, invalidateQueue, stopOnly]);
 
   useFocusEffect(
     useCallback(() => {
       focusedRef.current = true;
-      void startRecordingRef.current();
       return () => {
         focusedRef.current = false;
-        clearRestartTimer();
         void stopOnly();
       };
-    }, [clearRestartTimer, stopOnly]),
+    }, [stopOnly]),
   );
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", (state) => {
       if (state !== "active") {
-        clearRestartTimer();
         void stopOnly();
-        return;
       }
-      if (focusedRef.current) scheduleRestart(300);
     });
     return () => {
       sub.remove();
-      clearRestartTimer();
     };
-  }, [clearRestartTimer, scheduleRestart, stopOnly]);
+  }, [stopOnly]);
 
   const onMicPress = () => {
     if (isTranscribing) return;
@@ -349,7 +414,9 @@ export function useVoiceCapture() {
     captureMode,
     setCaptureMode,
     onMicPress,
+    captureFromText,
     energyAnim,
+    stopOnly,
   };
 }
 
@@ -476,31 +543,44 @@ function ListeningAura({
 type VoiceCaptureHeroProps = {
   isRecording: boolean;
   isTranscribing: boolean;
-  lastCaptured: { title: string; nextSteps: string[] }[];
-  lastTranscript?: string;
   captureMode?: CaptureMode;
   onCaptureModeChange?: (mode: CaptureMode) => void;
   onMicPress: () => void;
+  onTypedSubmit: (text: string) => Promise<boolean>;
+  onDraftFocus?: () => void;
   energyAnim: Animated.Value;
 };
 
 export function VoiceCaptureHero({
   isRecording,
   isTranscribing,
-  lastCaptured,
-  lastTranscript = "",
   captureMode = "tasks",
   onCaptureModeChange,
   onMicPress,
+  onTypedSubmit,
+  onDraftFocus,
   energyAnim,
 }: VoiceCaptureHeroProps) {
+  const [draft, setDraft] = useState("");
   const transcribeOnly = captureMode === "transcribe";
+
+  const submitDraft = async () => {
+    const text = draft.trim();
+    if (!text || isTranscribing) return;
+    const ok = await onTypedSubmit(text);
+    if (ok) setDraft("");
+  };
+
   return (
     <View style={styles.hero}>
-      <View style={styles.blobOne} pointerEvents="none" />
-      <View style={styles.blobTwo} pointerEvents="none" />
-      <Text style={styles.kicker}>dump it. lock it.</Text>
       <Text style={styles.brand}>Lock In</Text>
+      <Text style={styles.sub}>
+        {isTranscribing
+          ? "Saving…"
+          : isRecording
+            ? "Listening — tap when you’re done"
+            : "Speak or type a to-do"}
+      </Text>
       <View style={styles.modeRow}>
         <Pressable
           onPress={() => onCaptureModeChange?.("tasks")}
@@ -515,17 +595,6 @@ export function VoiceCaptureHero({
           <Text style={[styles.modeChipText, transcribeOnly && styles.modeChipTextOn]}>Notes</Text>
         </Pressable>
       </View>
-      <Text style={styles.sub}>
-        {isTranscribing
-          ? transcribeOnly
-            ? "Writing that down…"
-            : "Cooking it into tasks…"
-          : isRecording
-            ? transcribeOnly
-              ? "Ears open. Tap when the thought’s out."
-              : "Ears open. Tap when you’re done."
-            : "Waking the mic…"}
-      </Text>
 
       <View style={styles.micCol}>
         <View style={styles.micStage}>
@@ -547,38 +616,36 @@ export function VoiceCaptureHero({
           </Pressable>
         </View>
         <Text style={styles.micLabel}>
-          {isTranscribing
-            ? transcribeOnly
-              ? "Almost…"
-              : "Mapping it…"
-            : isRecording
-              ? "Tap to lock it in"
-              : "Tap if the mic is shy"}
+          {isTranscribing ? "Saving…" : isRecording ? "Tap to save" : "Tap to speak"}
         </Text>
       </View>
 
-      {transcribeOnly && lastTranscript && !isTranscribing ? (
-        <View style={styles.captured}>
-          <Text style={styles.capturedLabel}>IN THE PILE</Text>
-          <Text style={styles.capturedText}>{lastTranscript}</Text>
-        </View>
-      ) : null}
-
-      {!transcribeOnly && lastCaptured.length > 0 && !isTranscribing ? (
-        <View style={styles.captured}>
-          <Text style={styles.capturedLabel}>LOCKED IN</Text>
-          {lastCaptured.map((item, index) => (
-            <View key={`${index}-${item.title}`} style={styles.capturedItem}>
-              <Text style={styles.capturedText}>{item.title}</Text>
-              {(Array.isArray(item.nextSteps) ? item.nextSteps : []).slice(0, 3).map((step, stepIndex) => (
-                <Text key={`${index}-step-${stepIndex}`} style={styles.capturedStep}>
-                  {`• ${step}`}
-                </Text>
-              ))}
-            </View>
-          ))}
-        </View>
-      ) : null}
+      <View style={styles.composer}>
+        <TextInput
+          style={styles.composerInput}
+          value={draft}
+          onChangeText={setDraft}
+          placeholder="Type a to-do…"
+          placeholderTextColor={COLORS.inkDim}
+          multiline
+          editable={!isTranscribing}
+          returnKeyType="done"
+          blurOnSubmit
+          onFocus={() => onDraftFocus?.()}
+          onSubmitEditing={() => void submitDraft()}
+        />
+        <Pressable
+          onPress={() => void submitDraft()}
+          disabled={isTranscribing || !draft.trim()}
+          style={({ pressed }) => [
+            styles.addBtn,
+            (!draft.trim() || isTranscribing) && styles.addBtnDisabled,
+            pressed && { opacity: 0.85 },
+          ]}
+        >
+          <Text style={styles.addBtnText}>Add</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -588,62 +655,34 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 32,
-    paddingBottom: 24,
-    overflow: "hidden",
-  },
-  blobOne: {
-    position: "absolute",
-    top: -40,
-    right: -60,
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: "#ff5a7a18",
-  },
-  blobTwo: {
-    position: "absolute",
-    bottom: 40,
-    left: -80,
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    backgroundColor: "#3ecfc118",
-  },
-  kicker: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 12,
-    letterSpacing: 0.4,
-    color: COLORS.accent,
-    marginBottom: 6,
+    paddingHorizontal: 24,
+    paddingBottom: 16,
   },
   brand: {
     fontFamily: "Inter_700Bold",
-    fontSize: 40,
+    fontSize: 32,
     color: COLORS.ink,
-    letterSpacing: -1,
+    letterSpacing: -0.6,
   },
   sub: {
     fontFamily: "Inter_400Regular",
-    fontSize: 15,
+    fontSize: 14,
     color: COLORS.inkDim,
     textAlign: "center",
-    marginTop: 8,
-    marginBottom: 12,
-    lineHeight: 22,
-    maxWidth: 280,
+    marginTop: 6,
+    marginBottom: 4,
   },
   modeRow: {
     flexDirection: "row",
     gap: 8,
-    marginTop: 14,
+    marginTop: 12,
   },
   modeChip: {
     borderRadius: 999,
     borderWidth: 1,
     borderColor: "#f5d5c4",
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 6,
     backgroundColor: "#ffffffcc",
   },
   modeChipOn: {
@@ -658,18 +697,18 @@ const styles = StyleSheet.create({
   modeChipTextOn: {
     color: COLORS.accent,
   },
-  micCol: { alignItems: "center" },
+  micCol: { alignItems: "center", marginTop: 8 },
   micStage: {
-    width: 280,
-    height: 280,
+    width: 200,
+    height: 200,
     alignItems: "center",
     justifyContent: "center",
   },
   ripple: {
     position: "absolute",
-    width: 128,
-    height: 128,
-    borderRadius: 64,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     borderWidth: 2,
     borderColor: COLORS.accent,
   },
@@ -678,22 +717,22 @@ const styles = StyleSheet.create({
   },
   voiceGlow: {
     position: "absolute",
-    width: 128,
-    height: 128,
-    borderRadius: 64,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     backgroundColor: COLORS.accent,
   },
   breatheHalo: {
     position: "absolute",
-    width: 148,
-    height: 148,
-    borderRadius: 74,
+    width: 112,
+    height: 112,
+    borderRadius: 56,
     backgroundColor: COLORS.accent + "22",
   },
   mic: {
-    width: 128,
-    height: 128,
-    borderRadius: 64,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     backgroundColor: COLORS.accent,
     alignItems: "center",
     justifyContent: "center",
@@ -705,41 +744,45 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   micActive: { backgroundColor: COLORS.accentActive },
-  micIcon: { fontSize: 42 },
+  micIcon: { fontSize: 34 },
   micLabel: {
-    marginTop: -18,
+    marginTop: -12,
     fontFamily: "Inter_500Medium",
     fontSize: 14,
     color: COLORS.inkDim,
   },
-  captured: {
+  composer: {
     marginTop: 20,
     width: "100%",
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 8,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: COLORS.accent + "33",
-    backgroundColor: "#ffffffcc",
-    padding: 16,
+    borderColor: "#f5d5c4",
+    backgroundColor: "#fff",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
-  capturedLabel: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 10,
-    letterSpacing: 1.2,
-    color: COLORS.accent,
-    marginBottom: 6,
-  },
-  capturedText: {
-    fontFamily: "Inter_500Medium",
+  composerInput: {
+    flex: 1,
+    minHeight: 40,
+    maxHeight: 96,
+    fontFamily: "Inter_400Regular",
     fontSize: 15,
     color: COLORS.ink,
-    lineHeight: 22,
+    paddingVertical: 6,
   },
-  capturedItem: { marginTop: 10 },
-  capturedStep: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 13,
-    color: COLORS.inkDim,
-    lineHeight: 18,
-    marginTop: 3,
+  addBtn: {
+    borderRadius: 999,
+    backgroundColor: COLORS.accent,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  addBtnDisabled: { opacity: 0.45 },
+  addBtnText: {
+    fontFamily: "Inter_600SemiBold",
+    fontSize: 14,
+    color: "#fff",
   },
 });

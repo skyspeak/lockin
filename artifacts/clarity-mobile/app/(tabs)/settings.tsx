@@ -70,7 +70,6 @@ export default function SettingsScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
       <Text style={styles.title}>Settings</Text>
-      <Text style={styles.sub}>The quiet stuff behind the lock.</Text>
 
       <View style={styles.card}>
         <Pressable style={styles.row} onPress={() => void connectGmail()}>
@@ -119,14 +118,7 @@ const styles = StyleSheet.create({
     fontSize: 28,
     color: "#3a241e",
     marginTop: 12,
-  },
-  sub: {
-    fontFamily: "Inter_400Regular",
-    fontSize: 14,
-    color: "#a06d62",
-    marginTop: 6,
     marginBottom: 24,
-    lineHeight: 20,
   },
   card: {
     backgroundColor: "#ffffff",

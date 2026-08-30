@@ -145,3 +145,19 @@ export async function uploadCaptureAudio(
     headers: { Authorization: `Bearer ${apiKey}` },
   });
 }
+
+export async function uploadCaptureText(
+  apiBase: string,
+  apiKey: string,
+  text: string,
+  mode: "tasks" | "transcribe",
+): Promise<Response> {
+  return fetch(`${apiBase}/capture?mode=${mode}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ text }),
+  });
+}

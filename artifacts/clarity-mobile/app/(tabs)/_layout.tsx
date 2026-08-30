@@ -34,8 +34,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="tasks"
         options={{
-          title: "Pile",
-          tabBarIcon: ({ color }) => <TabIcon emoji="✨" color={color} />,
+          title: "Tasks",
+          tabBarIcon: ({ color }) => <TabIcon emoji="✓" color={color} />,
         }}
       />
       <Tabs.Screen
@@ -47,7 +47,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="settings"
         options={{
-          title: "Nest",
+          title: "Settings",
           tabBarIcon: ({ color }) => <TabIcon emoji="🌙" color={color} />,
         }}
       />

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetActionQueue,
@@ -6,7 +6,6 @@ import {
   useDeleteAction,
   getGetActionQueueUrl,
 } from "@workspace/api-client-react";
-import { ChevronUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useApiKey } from "@/lib/auth-context";
 import { VoiceCaptureButton } from "@/components/VoiceCaptureButton";
@@ -23,9 +22,7 @@ export default function Home() {
 
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
-  const [tasksOpen, setTasksOpen] = useState(false);
-  const [lastCaptured, setLastCaptured] = useState<{ title: string; nextSteps: string[] }[]>([]);
-  const [lastTranscript, setLastTranscript] = useState("");
+  const [draft, setDraft] = useState("");
   const [captureMode, setCaptureModeState] = useState<"tasks" | "transcribe">(() => {
     const stored = localStorage.getItem("lockin_capture_mode");
     return stored === "transcribe" ? "transcribe" : "tasks";
@@ -179,18 +176,14 @@ export default function Home() {
               toastRef.current({ title: "Nothing captured", description: "Try speaking again." });
               return;
             }
-            setLastTranscript(text);
-            setLastCaptured(items);
             invalidateRef.current();
-            toastRef.current({ title: "In the pile" });
+            toastRef.current({ title: "Saved" });
             return;
           }
           if (items.length === 0) {
             toastRef.current({ title: "Nothing captured", description: "Try speaking again." });
             return;
           }
-          setLastCaptured(items);
-          setLastTranscript("");
           invalidateRef.current();
 
           const sentEmails = (json.emails ?? []).filter((e) => e.sent);
@@ -233,11 +226,6 @@ export default function Home() {
         } finally {
           transcribingRef.current = false;
           setIsTranscribing(false);
-          if (mountedRef.current) {
-            window.setTimeout(() => {
-              if (mountedRef.current && !transcribingRef.current) void startRecordingRef.current();
-            }, 350);
-          }
         }
       };
       mr.start();
@@ -290,7 +278,6 @@ export default function Home() {
 
   useEffect(() => {
     mountedRef.current = true;
-    void startRecordingRef.current();
     return () => {
       mountedRef.current = false;
       stopLevelMeter();
@@ -363,10 +350,9 @@ export default function Home() {
       } finally {
         setIsRefining(false);
         setRefiningId(null);
-        if (mountedRef.current) void startRecording();
       }
     },
-    [apiKey, invalidate, startRecording, toast],
+    [apiKey, invalidate, toast],
   );
 
   const onRefineText = useCallback(
@@ -405,10 +391,9 @@ export default function Home() {
         toast({ title: "Couldn't refine that", variant: "destructive" });
       } finally {
         setIsRefining(false);
-        if (mountedRef.current) void startRecording();
       }
     },
-    [apiKey, invalidate, isRefining, startRecording, toast],
+    [apiKey, invalidate, isRefining, toast],
   );
 
   const onRefineVoice = useCallback(
@@ -445,154 +430,189 @@ export default function Home() {
     [isRefining, refiningId, sendRefine, stopOnly, toast],
   );
 
+  const submitTyped = async (event?: FormEvent) => {
+    event?.preventDefault();
+    const text = draft.trim();
+    if (!text || isTranscribing) return;
+    stopOnly();
+    transcribingRef.current = true;
+    setIsTranscribing(true);
+    try {
+      const mode = captureModeRef.current;
+      const res = await fetch(`${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/capture?mode=${mode}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKeyRef.current}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) {
+        let detail = mode === "transcribe" ? "Couldn't save that note" : "Couldn't turn that into a task";
+        try {
+          const body = (await res.json()) as { error?: string };
+          if (body.error) detail = body.error;
+        } catch {
+          detail = `Server returned ${res.status}`;
+        }
+        toast({ title: detail, variant: "destructive" });
+        return;
+      }
+      const json = (await res.json()) as {
+        actions?: { title: string }[];
+        calendarCreated?: number;
+        calendarError?: string;
+        emails?: Array<{ title: string; subject: string; to: string[]; sent: boolean; error?: string }>;
+        research?: Array<{ title: string; type?: string; answer: string }>;
+      };
+      const items = (json.actions ?? []).filter((a) => a.title);
+      if (mode !== "transcribe" && items.length === 0) {
+        toast({ title: "Nothing captured", description: "Try a more specific to-do." });
+        return;
+      }
+      setDraft("");
+      invalidate();
+      const sentEmails = (json.emails ?? []).filter((e) => e.sent);
+      const blockedEmails = (json.emails ?? []).filter((e) => !e.sent);
+      const researchBits = json.research ?? [];
+      if (researchBits.length > 0) {
+        toast({
+          title: researchBits.length === 1 ? "Research ready" : "Research locked in",
+          description: researchBits.map((r) => r.answer.slice(0, 180)).join(" · "),
+        });
+      } else if (sentEmails.length > 0) {
+        toast({
+          title: sentEmails.length === 1 ? "Email sent" : "Emails sent",
+          description: sentEmails.map((e) => `${e.subject} → ${e.to.join(", ")}`).join(" · "),
+        });
+      } else if (blockedEmails.length > 0) {
+        toast({
+          title: "Draft saved",
+          description: blockedEmails[0]?.error || "Need a recipient email before sending.",
+        });
+      } else {
+        toast({
+          title: mode === "transcribe" ? "Saved" : items.length === 1 ? "Added" : `${items.length} items added`,
+          description: items.map((item) => item.title).join(" · ") || undefined,
+        });
+      }
+      if (json.calendarCreated && json.calendarCreated > 0) {
+        toast({
+          title: json.calendarCreated === 1 ? "Event added to calendar" : `${json.calendarCreated} events added`,
+        });
+      } else if (json.calendarError) {
+        toast({
+          title: "Task saved",
+          description: "Calendar invite did not send. Connect Gmail first.",
+        });
+      }
+    } catch {
+      toast({ title: "Couldn't save that", variant: "destructive" });
+    } finally {
+      transcribingRef.current = false;
+      setIsTranscribing(false);
+    }
+  };
+
   return (
     <div className="min-h-screen lockin-shell text-[#3a241e] flex flex-col">
-      {/* Voice-first hero — default focus */}
-      <section className="flex-1 flex flex-col items-center justify-center px-6 pt-10 pb-6 min-h-[55vh]">
-        <header className="w-full max-w-xl mb-8 text-center relative">
-          <img src="/favicon.svg" alt="" className="mx-auto mb-4 h-14 w-14 lockin-float" />
-          <p className="text-xs font-bold tracking-wide text-[#ff5a7a] mb-2">
-            dump it. lock it.
-          </p>
-          <h1 className="text-4xl font-bold tracking-tight font-serif">
-            Lock In
-          </h1>
-          <p className="mt-2 text-[#a06d62] text-sm max-w-sm mx-auto">
-            {isTranscribing
-              ? captureMode === "transcribe"
-                ? "Writing that down…"
-                : "Cooking it into tasks…"
-              : isRecording
-                ? captureMode === "transcribe"
-                  ? "Ears open. Tap when the thought’s out."
-                  : "Ears open. Tap when you’re done."
-                : "Waking the mic…"}
-          </p>
-          <div className="mt-4 flex items-center justify-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setCaptureModeState("tasks");
-                localStorage.setItem("lockin_capture_mode", "tasks");
+      <section className="px-6 pt-8 pb-4 flex flex-col items-center">
+        <h1 className="text-3xl font-bold tracking-tight font-serif">Lock In</h1>
+        <p className="mt-1 text-[#a06d62] text-sm">
+          {isTranscribing
+            ? "Saving…"
+            : isRecording
+              ? "Listening — tap when you’re done"
+              : "Speak or type a to-do"}
+        </p>
+        <div className="mt-3 flex items-center justify-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setCaptureModeState("tasks");
+              localStorage.setItem("lockin_capture_mode", "tasks");
+            }}
+            className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+              captureMode === "tasks"
+                ? "border-[#ff5a7a] bg-[#ff5a7a14] text-[#ff5a7a]"
+                : "border-[#f5d5c4] text-[#a06d62] bg-white/70"
+            }`}
+          >
+            Tasks
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setCaptureModeState("transcribe");
+              localStorage.setItem("lockin_capture_mode", "transcribe");
+            }}
+            className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+              captureMode === "transcribe"
+                ? "border-[#ff5a7a] bg-[#ff5a7a14] text-[#ff5a7a]"
+                : "border-[#f5d5c4] text-[#a06d62] bg-white/70"
+            }`}
+          >
+            Notes
+          </button>
+        </div>
+
+        <div className="mt-4">
+          <VoiceCaptureButton
+            isRecording={isRecording}
+            isTranscribing={isTranscribing}
+            onPress={onMic}
+            voiceLevel={voiceLevel}
+            hint={isRecording ? "Tap to save" : isTranscribing ? "Saving…" : "Tap to speak"}
+          />
+        </div>
+
+        <form onSubmit={(e) => void submitTyped(e)} className="mt-2 w-full max-w-md">
+          <div className="flex items-end gap-2 rounded-2xl border border-[#f5d5c4] bg-white p-2">
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onFocus={stopOnly}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void submitTyped();
+                }
               }}
-              className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                captureMode === "tasks"
-                  ? "border-[#ff5a7a] bg-[#ff5a7a14] text-[#ff5a7a]"
-                  : "border-[#f5d5c4] text-[#a06d62] bg-white/70"
-              }`}
-            >
-              Tasks
-            </button>
+              placeholder="Type a to-do…"
+              disabled={isTranscribing}
+              rows={2}
+              className="min-h-[44px] flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-[#3a241e] outline-none placeholder:text-[#a06d62]"
+            />
             <button
-              type="button"
-              onClick={() => {
-                setCaptureModeState("transcribe");
-                localStorage.setItem("lockin_capture_mode", "transcribe");
-              }}
-              className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                captureMode === "transcribe"
-                  ? "border-[#ff5a7a] bg-[#ff5a7a14] text-[#ff5a7a]"
-                  : "border-[#f5d5c4] text-[#a06d62] bg-white/70"
-              }`}
+              type="submit"
+              disabled={isTranscribing || !draft.trim()}
+              className="shrink-0 rounded-full bg-[#ff5a7a] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
             >
-              Notes
+              Add
             </button>
           </div>
-        </header>
-
-        <VoiceCaptureButton
-          isRecording={isRecording}
-          isTranscribing={isTranscribing}
-          onPress={onMic}
-          voiceLevel={voiceLevel}
-          hint={
-            isTranscribing
-              ? captureMode === "transcribe"
-                ? "Almost…"
-                : "Hang tight…"
-              : isRecording
-                ? captureMode === "transcribe"
-                  ? "Tap to catch it — or press space"
-                  : "Tap to lock it in — or press space"
-                : "Tap if the mic is shy"
-          }
-        />
-
-        {captureMode === "transcribe" && lastTranscript && !isTranscribing && (
-          <div className="mt-8 max-w-md w-full rounded-2xl border border-[#ff5a7a33] bg-white/80 px-4 py-3 text-left">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#ff5a7a] mb-1">
-              In the pile
-            </p>
-            <p className="text-sm text-[#3a241e] leading-relaxed">{lastTranscript}</p>
-          </div>
-        )}
-
-        {captureMode === "tasks" && lastCaptured.length > 0 && !isTranscribing && (
-          <div className="mt-8 max-w-md w-full rounded-2xl border border-[#ff5a7a33] bg-white/80 px-4 py-3 text-center">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#ff5a7a] mb-1">
-              Locked in
-            </p>
-            <ul className="space-y-3 text-left">
-              {lastCaptured.map((item, index) => (
-                <li key={`${index}-${item.title}`}>
-                  <p className="text-sm font-medium text-[#3a241e] leading-snug">{item.title}</p>
-                  {Array.isArray(item.nextSteps) && item.nextSteps.length > 0 && (
-                    <ol className="mt-1 ml-4 list-decimal space-y-0.5">
-                      {item.nextSteps.slice(0, 3).map((step, stepIndex) => (
-                        <li key={`${index}-step-${stepIndex}`} className="text-xs text-[#a06d62] leading-snug">
-                          {step}
-                        </li>
-                      ))}
-                    </ol>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        </form>
       </section>
 
-      {/* Tasks — secondary panel, collapsed by default */}
-      <section className="border-t border-[#f5d5c4] bg-white/85 backdrop-blur-sm rounded-t-3xl shadow-[0_-8px_30px_-12px_rgba(0,0,0,0.06)]">
-        <button
-          type="button"
-          onClick={() => {
-            if (!tasksOpen) invalidate();
-            setTasksOpen((o) => !o);
-          }}
-          className="w-full flex items-center justify-between px-6 py-4 text-left"
-          aria-expanded={tasksOpen}
-        >
-          <div>
-            <p className="text-sm font-semibold text-[#3a241e]">Your pile</p>
-            <p className="text-xs text-[#a06d62]">
-              {queue.length === 0
-                ? "Nothing waiting — peaceful"
-                : `${queue.length} ${queue.length === 1 ? "thing" : "things"} lingering`}
-            </p>
-          </div>
-          <ChevronUp
-            className={`h-5 w-5 text-[#a06d62] transition-transform ${tasksOpen ? "" : "rotate-180"}`}
-          />
-        </button>
-
-        {tasksOpen && (
-          <div className="px-6 pb-8 max-w-xl mx-auto w-full">
-            <TaskPanel
-              tasks={queue}
-              isLoading={isLoading}
-              onComplete={complete}
-              onDelete={remove}
-              onRefineVoice={onRefineVoice}
-              onRefineText={onRefineText}
-              notes={notes}
-              onNoteChange={(id, note) => setNotes((current) => ({ ...current, [id]: note }))}
-              refiningId={refiningId}
-              isRefining={isRefining}
-              compact
-            />
-          </div>
-        )}
+      <section className="flex-1 px-6 pb-8 max-w-xl mx-auto w-full">
+        <div className="mb-3 flex items-baseline justify-between">
+          <p className="text-sm font-semibold text-[#3a241e]">Tasks</p>
+          <p className="text-xs text-[#a06d62]">
+            {queue.length === 0 ? "None yet" : `${queue.length}`}
+          </p>
+        </div>
+        <TaskPanel
+          tasks={queue}
+          isLoading={isLoading}
+          onComplete={complete}
+          onDelete={remove}
+          onRefineVoice={onRefineVoice}
+          onRefineText={onRefineText}
+          notes={notes}
+          onNoteChange={(id, note) => setNotes((current) => ({ ...current, [id]: note }))}
+          refiningId={refiningId}
+          isRefining={isRefining}
+        />
       </section>
     </div>
   );

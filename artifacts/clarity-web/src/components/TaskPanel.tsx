@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { SwipeTask } from "@/components/SwipeTask";
 
 export type TaskItem = {
@@ -64,6 +65,8 @@ export function TaskPanel({
   isRefining = false,
   compact = false,
 }: TaskPanelProps) {
+  const [openId, setOpenId] = useState<number | null>(null);
+
   if (isLoading) {
     return (
       <div className="py-8 text-center text-sm text-[#a06d62]">Loading tasks…</div>
@@ -72,9 +75,8 @@ export function TaskPanel({
 
   if (tasks.length === 0) {
     return (
-      <div className="py-10 text-center">
-        <p className="text-sm text-[#a06d62]">Nothing in the pile yet.</p>
-        <p className="text-xs text-[#a06d62]/80 mt-1">Speak something into existence.</p>
+      <div className="py-8 text-center">
+        <p className="text-sm text-[#a06d62]">No tasks yet. Speak or type one above.</p>
       </div>
     );
   }
@@ -95,9 +97,7 @@ export function TaskPanel({
 
   return (
     <div className={`space-y-4 ${compact ? "max-h-[40vh] overflow-y-auto pr-1" : ""}`}>
-      <p className="px-1 text-[11px] text-[#a06d62]">
-        Swipe right to finish · swipe left to delete
-      </p>
+      <p className="px-1 text-[11px] text-[#a06d62]">Swipe right to finish · left to delete</p>
       {grouped.map((group) => {
         const chip = CATEGORY_COLORS[group.category] ?? CATEGORY_COLORS.other;
         return (
@@ -108,11 +108,12 @@ export function TaskPanel({
             <ul className="space-y-2">
               {group.items.map((a) => {
                 const listening = refiningId === a.id;
+                const open = openId === a.id;
                 return (
                   <li key={a.id}>
                     <SwipeTask onDone={() => onComplete(a.id)} onDelete={() => onDelete(a.id)}>
                       <div className="rounded-2xl border border-[#f5d5c4] bg-white p-4">
-                        <div className="mb-3 flex items-start justify-between gap-3">
+                        <div className="flex items-start justify-between gap-3">
                           <p className="text-[15px] leading-snug font-medium">{a.title}</p>
                           <span
                             className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
@@ -122,7 +123,7 @@ export function TaskPanel({
                           </span>
                         </div>
                         {Array.isArray(a.nextSteps) && a.nextSteps.length > 0 && (
-                          <ol className="mb-3 ml-4 list-decimal space-y-1">
+                          <ol className="mt-2 ml-4 list-decimal space-y-1">
                             {a.nextSteps.map((step, index) => (
                               <li key={`${a.id}-step-${index}`} className="text-xs text-[#a06d62] leading-snug">
                                 {step}
@@ -130,37 +131,48 @@ export function TaskPanel({
                             ))}
                           </ol>
                         )}
-                        <textarea
-                          value={notes[a.id] ?? ""}
-                          onChange={(e) => onNoteChange(a.id, e.target.value)}
+                        <button
+                          type="button"
+                          onClick={() => setOpenId(open ? null : a.id)}
                           onPointerDown={(e) => e.stopPropagation()}
-                          placeholder="Type a refinement or paste a transcript…"
-                          disabled={isRefining}
-                          rows={3}
-                          className="mb-2 w-full resize-y rounded-2xl border border-[#f5d5c4] bg-white px-3 py-2 text-sm text-[#3a241e] outline-none focus:border-[#ff5a7a]"
-                        />
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            disabled={isRefining}
-                            onClick={() => onRefineText(a.id, notes[a.id] ?? "")}
-                            className="rounded-full border border-[#ff5a7a44] bg-white px-3 py-2 text-xs font-semibold text-[#ff5a7a]"
-                          >
-                            {isRefining && refiningId === a.id && !listening ? "Refining…" : "Refine"}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isRefining && !listening}
-                            onClick={() => onRefineVoice(a.id)}
-                            className={`rounded-full border px-3 py-2 text-xs font-semibold ${
-                              listening
-                                ? "border-[#ff5a7a] bg-[#ff5a7a] text-white"
-                                : "border-[#ff5a7a44] bg-white text-[#ff5a7a]"
-                            }`}
-                          >
-                            {listening ? "Tap to stop" : "Speak"}
-                          </button>
-                        </div>
+                          className="mt-2 text-xs font-semibold text-[#ff5a7a]"
+                        >
+                          {open ? "Hide refine" : "Refine"}
+                        </button>
+                        {open && (
+                          <div className="mt-2" onPointerDown={(e) => e.stopPropagation()}>
+                            <textarea
+                              value={notes[a.id] ?? ""}
+                              onChange={(e) => onNoteChange(a.id, e.target.value)}
+                              placeholder="Add detail…"
+                              disabled={isRefining}
+                              rows={2}
+                              className="mb-2 w-full resize-y rounded-2xl border border-[#f5d5c4] bg-white px-3 py-2 text-sm text-[#3a241e] outline-none focus:border-[#ff5a7a]"
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                disabled={isRefining}
+                                onClick={() => onRefineText(a.id, notes[a.id] ?? "")}
+                                className="rounded-full border border-[#ff5a7a44] bg-white px-3 py-2 text-xs font-semibold text-[#ff5a7a]"
+                              >
+                                {isRefining && refiningId === a.id && !listening ? "Refining…" : "Apply"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isRefining && !listening}
+                                onClick={() => onRefineVoice(a.id)}
+                                className={`rounded-full border px-3 py-2 text-xs font-semibold ${
+                                  listening
+                                    ? "border-[#ff5a7a] bg-[#ff5a7a] text-white"
+                                    : "border-[#ff5a7a44] bg-white text-[#ff5a7a]"
+                                }`}
+                              >
+                                {listening ? "Tap to stop" : "Speak"}
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </SwipeTask>
                   </li>

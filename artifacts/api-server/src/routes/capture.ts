@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { eq } from "drizzle-orm";
 import { db, thoughtsTable, actionsTable } from "@workspace/db";
 import {
@@ -18,6 +18,8 @@ import {
 const router = Router();
 router.use(audioLimiter);
 
+const MAX_TYPED_CHARS = 4000;
+
 function publicCaptureError(err: unknown): string {
   const raw = err instanceof Error ? err.message : "Capture failed";
   return raw.replace(/key=[^&\s"']+/gi, "key=***").slice(0, 220);
@@ -28,39 +30,21 @@ function captureMode(req: { query?: Record<string, unknown>; body?: Record<strin
   return raw === "transcribe" ? "transcribe" : "tasks";
 }
 
-router.post("/", audioUpload.single("audio"), async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: "Missing audio file (field name: 'audio')" });
-  }
+function typedText(body: unknown): string {
+  if (!body || typeof body !== "object") return "";
+  const text = (body as { text?: unknown }).text;
+  return typeof text === "string" ? text.trim() : "";
+}
 
-  if (req.file.buffer.length < 8) {
-    return res.status(400).json({ error: "Recording too short. Hold the mic and speak a bit longer." });
-  }
-
-  const sniffed = sniffAudioMime(req.file.buffer);
-  const claimed = (req.file.mimetype || "").toLowerCase();
-  if (!sniffed) {
-    req.log.warn({ claimed, bytes: req.file.buffer.length }, "capture rejected unknown audio");
-    return res.status(415).json({ error: "Unsupported audio type" });
-  }
-
-  const filename = safeAudioFilename(req.file.originalname);
-  const mime = sniffed;
+async function persistFromTranscript(
+  req: Request,
+  res: Response,
+  transcript: string,
+  mode: "tasks" | "transcribe",
+): Promise<Response> {
   const userId = req.userId;
-  const mode = captureMode(req);
 
-  try {
-    const transcript = await transcribeAudio({
-      buffer: req.file.buffer,
-      mime,
-      filename,
-    });
-
-    if (!transcript.trim()) {
-      return res.status(400).json({ error: "Nothing captured. Try speaking again." });
-    }
-
-    if (mode === "transcribe") {
+  if (mode === "transcribe") {
       const [thought] = await db
         .insert(thoughtsTable)
         .values({
@@ -70,7 +54,7 @@ router.post("/", audioUpload.single("audio"), async (req, res) => {
         })
         .returning();
 
-      const title = transcript.trim().slice(0, 500) || "Voice note";
+      const title = transcript.trim().slice(0, 500) || "Note";
       const [action] = await db
         .insert(actionsTable)
         .values({
@@ -251,6 +235,46 @@ router.post("/", audioUpload.single("audio"), async (req, res) => {
       research,
       kinds: extracted.actions.map((item) => item.routerType ?? "task"),
     });
+}
+
+router.post("/", audioUpload.single("audio"), async (req, res) => {
+  const mode = captureMode(req);
+  const typed = typedText(req.body);
+
+  try {
+    if (typed) {
+      if (typed.length > MAX_TYPED_CHARS) {
+        return res.status(400).json({ error: "Note is too long (4000 character max)." });
+      }
+      return await persistFromTranscript(req, res, typed, mode);
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: "Type a note or attach audio." });
+    }
+
+    if (req.file.buffer.length < 8) {
+      return res.status(400).json({ error: "Recording too short. Hold the mic and speak a bit longer." });
+    }
+
+    const sniffed = sniffAudioMime(req.file.buffer);
+    const claimed = (req.file.mimetype || "").toLowerCase();
+    if (!sniffed) {
+      req.log.warn({ claimed, bytes: req.file.buffer.length }, "capture rejected unknown audio");
+      return res.status(415).json({ error: "Unsupported audio type" });
+    }
+
+    const transcript = await transcribeAudio({
+      buffer: req.file.buffer,
+      mime: sniffed,
+      filename: safeAudioFilename(req.file.originalname),
+    });
+
+    if (!transcript.trim()) {
+      return res.status(400).json({ error: "Nothing captured. Try speaking again." });
+    }
+
+    return await persistFromTranscript(req, res, transcript, mode);
   } catch (err) {
     req.log.error(
       { err: err instanceof Error ? err.message : "unknown" },
