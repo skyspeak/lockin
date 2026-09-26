@@ -47,3 +47,11 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# --- added by cleanup 2026-09-09 ---
+.next/
+build/
+.turbo/
+__pycache__/
+*.pyc
+.vite/

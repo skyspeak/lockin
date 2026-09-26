@@ -1,6 +1,13 @@
 import { z } from "zod/v4";
 import { chatCompletionJson } from "./llm";
-import type { ExtractContext, ExtractedAction, ExtractResult, RouterItem } from "./extract";
+import {
+  clampWords,
+  shortIntroEmail,
+  type ExtractContext,
+  type ExtractedAction,
+  type ExtractResult,
+  type RouterItem,
+} from "./extract";
 
 const researchSchema = z.object({
   answer: z.string().min(1).max(4000),
@@ -207,9 +214,9 @@ async function fulfillEmail(item: RouterItem, ctx: ExtractContext): Promise<Fulf
         role: "system",
         content: `You are Lock In's email desk. Polish the draft so it is ready to send.
 Return JSON: subject, body, send_now, missing.
-- Keep body under 120 words, short sentences
+- Keep a normal email under 120 words, short sentences
+- For intro emails: under 60 words, three or four short sentences, double opt-in, one line on each person, one line on the reason, ask them to reply
 - Sign off with the user name if known
-- For intro emails: double opt-in by default unless the draft already is
 - send_now: true only if recipients and facts are enough to send without inventing emails or claims
 - missing: list anything blocking a send (e.g. "email for Priya")
 Never invent an email address.`,
@@ -232,22 +239,35 @@ Is intro: ${isIntro ? "yes" : "no"}`,
   );
 
   const parsed = emailPolishSchema.parse(parseJsonObject(raw));
+  const polished = isIntro
+    ? shortIntroEmail({
+        subject: parsed.subject,
+        body: parsed.body,
+        cleanText: item.clean_text,
+        people: item.people,
+        userName: ctx.userName,
+      })
+    : { subject: parsed.subject, body: clampWords(parsed.body, 120) };
   const sendNow = parsed.send_now && to.length > 0 && parsed.missing.length === 0;
+  const recipientLine = sendNow
+    ? `Send to ${to.join(", ")}`
+    : to.length > 0
+      ? `To: ${to.join(", ")}`
+      : "Add recipient emails before sending";
 
   return {
-    summary: `${isIntro ? "Intro email" : "Email draft"}: ${parsed.subject}\n\n${parsed.body}`.slice(
-      0,
-      1500,
-    ),
-    steps: [
-      sendNow ? `Send to ${to.join(", ")}` : "Confirm recipients before sending",
-      `Subject: ${parsed.subject}`,
-      ...parsed.body
-        .split(/\n+/)
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .slice(0, 3),
-    ].slice(0, 8),
+    summary: polished.body.slice(0, 1500),
+    steps: isIntro
+      ? [recipientLine]
+      : [
+          recipientLine,
+          `Subject: ${polished.subject}`,
+          ...polished.body
+            .split(/\n+/)
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .slice(0, 3),
+        ].slice(0, 8),
     userTodos: sendNow
       ? ["Confirm the email went out", "Note any reply"]
       : [
@@ -258,8 +278,8 @@ Is intro: ${isIntro ? "yes" : "no"}`,
         ],
     checkInHint: sendNow ? "Watch for replies in 2 days" : "Don’t send until missing fields are filled",
     email: {
-      subject: parsed.subject,
-      body: parsed.body,
+      subject: polished.subject,
+      body: polished.body,
       to,
       sendNow,
       missing: parsed.missing,
@@ -506,9 +526,11 @@ export async function fulfillRouterItem(
 }
 
 function applyFulfillment(action: ExtractedAction, item: RouterItem | undefined, fulfillment: Fulfillment): ExtractedAction {
+  const email = item?.type === "intro_email" ? fulfillment.email : undefined;
   return {
     ...action,
-    description: fulfillment.summary,
+    title: email ? email.subject.slice(0, 500) : action.title,
+    description: email ? email.body.slice(0, 2000) : fulfillment.summary,
     nextSteps: fulfillment.steps.slice(0, 8).map((s) => s.slice(0, 200)),
     checkInHint: fulfillment.checkInHint ?? action.checkInHint,
     routerType: item?.type ?? action.routerType,

@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { actionsTable } from "@workspace/db";
 import { eq, desc, and, or, isNull, lte, sql } from "drizzle-orm";
-import { transcribeAudio, refineActionFromNote } from "@workspace/integrations";
+import { transcribeAudio, refineActionFromNote, presentCaptureError } from "@workspace/integrations";
 import {
   CreateActionBody,
   UpdateActionBody,
@@ -119,7 +119,7 @@ router.get("/queue", async (req, res) => {
 
 function publicRefineError(err: unknown): string {
   const raw = err instanceof Error ? err.message : "Refine failed";
-  return raw.replace(/key=[^&\s"']+/gi, "key=***").slice(0, 220);
+  return presentCaptureError(raw);
 }
 
 router.post("/:id/refine", audioLimiter, audioUpload.single("audio"), async (req, res) => {

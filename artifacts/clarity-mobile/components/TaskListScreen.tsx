@@ -25,6 +25,11 @@ import {
   recordingTooShort,
   stopActiveRecording,
 } from "@/lib/recording";
+import {
+  flushPendingCaptures,
+  pendingCaptureLabel,
+  usePendingCaptureList,
+} from "@/lib/pendingCaptures";
 
 const COLORS = {
   bg: "#fff3e6",
@@ -45,6 +50,7 @@ type Action = {
   status: string;
   priority: string;
   category?: string;
+  description?: string | null;
   nextSteps?: string[];
 };
 
@@ -85,6 +91,7 @@ export function TaskListScreen() {
   const [isRefining, setIsRefining] = useState(false);
   const [notes, setNotes] = useState<Record<number, string>>({});
   const [openId, setOpenId] = useState<number | null>(null);
+  const pending = usePendingCaptureList();
 
   const invalidateQueue = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: [queueUrl] });
@@ -98,8 +105,15 @@ export function TaskListScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void refetch();
-    }, [refetch]),
+      void (async () => {
+        if (apiKey.trim()) {
+          const apiBase = await resolveApiBase();
+          const sent = await flushPendingCaptures(apiBase, apiKey);
+          if (sent > 0) invalidateQueue();
+        }
+        await refetch();
+      })();
+    }, [apiKey, invalidateQueue, refetch]),
   );
 
   const queue = (data?.queue ?? []) as Action[];
@@ -285,12 +299,24 @@ export function TaskListScreen() {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.accent} />
         }
+        ListHeaderComponent={
+          pending.length === 0 ? null : (
+            <View style={styles.pendingBlock}>
+              {pending.map((item) => (
+                <View key={item.id} style={styles.card}>
+                  <Text style={styles.cardTitle}>{pendingCaptureLabel(item)}</Text>
+                  <Text style={styles.nextStep}>Waiting to send</Text>
+                </View>
+              ))}
+            </View>
+          )
+        }
         ListEmptyComponent={
           isError ? (
             <View style={styles.empty}>
               <Text style={styles.emptyText}>Couldn't load tasks. Pull down to try again.</Text>
             </View>
-          ) : !isLoading ? (
+          ) : !isLoading && pending.length === 0 ? (
             <View style={styles.empty}>
               <Text style={styles.emptyText}>No tasks yet. Speak or type one on the Speak tab.</Text>
             </View>
@@ -342,6 +368,9 @@ export function TaskListScreen() {
                       </Text>
                     </View>
                   </View>
+                  {item.description ? (
+                    <Text style={styles.emailBody}>{item.description}</Text>
+                  ) : null}
                   {(Array.isArray(item.nextSteps) ? item.nextSteps : []).map((step, index) => (
                     <Text key={`${item.id}-step-${index}`} style={styles.nextStep}>
                       {`• ${step}`}
@@ -431,6 +460,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.hairline,
     borderRadius: 20,
+  },
+  pendingBlock: { gap: 10, marginBottom: 12 },
+  emailBody: {
+    fontFamily: "Inter_400Regular",
+    fontSize: 14,
+    color: COLORS.ink,
+    lineHeight: 20,
+    marginBottom: 8,
   },
   cardTitle: {
     fontFamily: "Inter_500Medium",

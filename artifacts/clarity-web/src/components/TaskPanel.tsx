@@ -7,6 +7,7 @@ export type TaskItem = {
   status: string;
   priority: string;
   category?: string;
+  description?: string | null;
   nextSteps?: string[];
   snoozedUntil?: string | null;
   createdAt: string;
@@ -122,6 +123,11 @@ export function TaskPanel({
                             {CATEGORY_LABELS[group.category] ?? group.category}
                           </span>
                         </div>
+                        {a.description ? (
+                          <p className="mt-2 whitespace-pre-wrap text-sm leading-snug text-[#3a241e]">
+                            {a.description}
+                          </p>
+                        ) : null}
                         {Array.isArray(a.nextSteps) && a.nextSteps.length > 0 && (
                           <ol className="mt-2 ml-4 list-decimal space-y-1">
                             {a.nextSteps.map((step, index) => (

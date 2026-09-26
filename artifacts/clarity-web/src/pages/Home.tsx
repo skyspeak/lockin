@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { createAudioLevelNormalizer } from "../../../../lib/integrations/src/audioLevel";
+import { presentCaptureError } from "../../../../lib/integrations/src/captureError";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetActionQueue,
@@ -10,6 +12,20 @@ import { useToast } from "@/hooks/use-toast";
 import { useApiKey } from "@/lib/auth-context";
 import { VoiceCaptureButton } from "@/components/VoiceCaptureButton";
 import { TaskPanel, type TaskItem } from "@/components/TaskPanel";
+import {
+  flushPendingCaptures,
+  isRetryableCaptureStatus,
+  listPendingCaptures,
+  pendingCaptureLabel,
+  rememberPendingAudio,
+  rememberPendingText,
+  subscribePendingCaptures,
+  type PendingCapture,
+} from "@/lib/pendingCaptures";
+
+function captureUrl(mode: string) {
+  return `${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/capture?mode=${mode}`;
+}
 
 export default function Home() {
   const apiKey = useApiKey();
@@ -43,8 +59,10 @@ export default function Home() {
   const apiKeyRef = useRef(apiKey);
   const toastRef = useRef(toast);
   const [voiceLevel, setVoiceLevel] = useState(0);
+  const [pending, setPending] = useState<PendingCapture[]>(() => listPendingCaptures());
   const levelRaf = useRef<number | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const levelNormalizer = useRef(createAudioLevelNormalizer());
   apiKeyRef.current = apiKey;
   toastRef.current = toast;
 
@@ -69,11 +87,12 @@ export default function Home() {
       analyser.fftSize = 256;
       source.connect(analyser);
       const data = new Uint8Array(analyser.fftSize);
+      levelNormalizer.current.reset();
       let last = 0;
       let lastTs = 0;
       const tick = (ts: number) => {
         levelRaf.current = requestAnimationFrame(tick);
-        if (ts - lastTs < 100) return;
+        if (ts - lastTs < 50) return;
         lastTs = ts;
         analyser.getByteTimeDomainData(data);
         let sum = 0;
@@ -81,8 +100,8 @@ export default function Home() {
           const v = (data[i] - 128) / 128;
           sum += v * v;
         }
-        const next = Math.min(1, Math.sqrt(sum / data.length) * 3.2);
-        if (Math.abs(next - last) < 0.04) return;
+        const next = levelNormalizer.current.fromRms(Math.sqrt(sum / data.length));
+        if (Math.abs(next - last) < 0.02) return;
         last = next;
         setVoiceLevel(next);
       };
@@ -96,6 +115,19 @@ export default function Home() {
   }, [qc, queueKey]);
   const invalidateRef = useRef(invalidate);
   invalidateRef.current = invalidate;
+
+  useEffect(() => subscribePendingCaptures(() => setPending(listPendingCaptures())), []);
+
+  useEffect(() => {
+    const flush = () => {
+      void flushPendingCaptures(apiKeyRef.current, captureUrl).then((sent) => {
+        if (sent > 0) invalidateRef.current();
+      });
+    };
+    flush();
+    window.addEventListener("online", flush);
+    return () => window.removeEventListener("online", flush);
+  }, [apiKey]);
 
   const startRecordingRef = useRef<() => Promise<void>>(async () => {});
 
@@ -138,11 +170,11 @@ export default function Home() {
         setIsTranscribing(true);
         const blobType = mr.mimeType || "audio/webm";
         const blob = new Blob(chunks.current, { type: blobType });
+        const filename = blobType.includes("mp4") || blobType.includes("m4a") ? "audio.m4a" : "audio.webm";
+        const mode = captureModeRef.current;
         try {
           const form = new FormData();
-          const filename = blobType.includes("mp4") || blobType.includes("m4a") ? "audio.m4a" : "audio.webm";
           form.append("audio", blob, filename);
-          const mode = captureModeRef.current;
           const res = await fetch(`${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/capture?mode=${mode}`, {
             method: "POST",
             body: form,
@@ -156,7 +188,15 @@ export default function Home() {
             } catch {
               detail = `Server returned ${res.status}`;
             }
-            toastRef.current({ title: detail, variant: "destructive" });
+            if (isRetryableCaptureStatus(res.status)) {
+              await rememberPendingAudio(mode, blob, filename);
+              toastRef.current({
+                title: "Saved in this browser",
+                description: "I'll send what you said when you're back online.",
+              });
+              return;
+            }
+            toastRef.current({ title: presentCaptureError(detail, res.status), variant: "destructive" });
             return;
           }
           const json = (await res.json()) as {
@@ -222,7 +262,11 @@ export default function Home() {
             });
           }
         } catch {
-          toastRef.current({ title: "Couldn't turn that into tasks", variant: "destructive" });
+          await rememberPendingAudio(mode, blob, filename);
+          toastRef.current({
+            title: "Saved in this browser",
+            description: "I'll send what you said when you're back online.",
+          });
         } finally {
           transcribingRef.current = false;
           setIsTranscribing(false);
@@ -339,7 +383,7 @@ export default function Home() {
           } catch {
             detail = `Server returned ${res.status}`;
           }
-          toast({ title: detail, variant: "destructive" });
+          toast({ title: presentCaptureError(detail, res.status), variant: "destructive" });
           return;
         }
         invalidate();
@@ -381,7 +425,7 @@ export default function Home() {
           } catch {
             detail = `Server returned ${res.status}`;
           }
-          toast({ title: detail, variant: "destructive" });
+          toast({ title: presentCaptureError(detail, res.status), variant: "destructive" });
           return;
         }
         setNotes((current) => ({ ...current, [id]: "" }));
@@ -437,8 +481,8 @@ export default function Home() {
     stopOnly();
     transcribingRef.current = true;
     setIsTranscribing(true);
+    const mode = captureModeRef.current;
     try {
-      const mode = captureModeRef.current;
       const res = await fetch(`${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/capture?mode=${mode}`, {
         method: "POST",
         headers: {
@@ -455,7 +499,16 @@ export default function Home() {
         } catch {
           detail = `Server returned ${res.status}`;
         }
-        toast({ title: detail, variant: "destructive" });
+        if (isRetryableCaptureStatus(res.status)) {
+          await rememberPendingText(mode, text);
+          setDraft("");
+          toast({
+            title: "Saved in this browser",
+            description: "I'll send what you said when you're back online.",
+          });
+          return;
+        }
+        toast({ title: presentCaptureError(detail, res.status), variant: "destructive" });
         return;
       }
       const json = (await res.json()) as {
@@ -507,7 +560,12 @@ export default function Home() {
         });
       }
     } catch {
-      toast({ title: "Couldn't save that", variant: "destructive" });
+      await rememberPendingText(mode, text);
+      setDraft("");
+      toast({
+        title: "Saved in this browser",
+        description: "I'll send what you said when you're back online.",
+      });
     } finally {
       transcribingRef.current = false;
       setIsTranscribing(false);
@@ -601,6 +659,16 @@ export default function Home() {
             {queue.length === 0 ? "None yet" : `${queue.length}`}
           </p>
         </div>
+        {pending.length > 0 ? (
+          <ul className="mb-4 space-y-2">
+            {pending.map((item) => (
+              <li key={item.id} className="rounded-2xl border border-[#f5d5c4] bg-white p-4">
+                <p className="text-[15px] leading-snug font-medium">{pendingCaptureLabel(item)}</p>
+                <p className="mt-1 text-xs text-[#a06d62]">Waiting to send</p>
+              </li>
+            ))}
+          </ul>
+        ) : null}
         <TaskPanel
           tasks={queue}
           isLoading={isLoading}

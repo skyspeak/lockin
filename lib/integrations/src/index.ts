@@ -10,6 +10,10 @@ export {
   type ChatJsonOptions,
 } from "./llm";
 export { transcribeAudio } from "./transcribe";
+export { prepareTranscript, isEmptyTranscriptError, type PrepareTranscriptOptions } from "./transcript";
+export { createAudioLevelNormalizer, type AudioLevelNormalizer } from "./audioLevel";
+export { presentCaptureError } from "./captureError";
+export { isRetryableCaptureStatus, retainPending } from "./pendingQueue";
 export { refineActionFromNote, type RefinedAction } from "./refine";
 export {
   extractActionsFromThought,
@@ -24,6 +28,10 @@ export {
   type RouterResult,
   type RouterType,
   type LifeArea,
+  shortIntroEmail,
+  looksLikeIntro,
+  clampWords,
+  INTRO_EMAIL_WORD_LIMIT,
 } from "./extract";
 export {
   fulfillExtractResult,

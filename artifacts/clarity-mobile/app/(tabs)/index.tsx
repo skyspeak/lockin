@@ -1,11 +1,13 @@
 import { KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { VoiceCaptureHero, useVoiceCapture } from "@/components/VoiceCapture";
+import { pendingCaptureLabel } from "@/lib/pendingCaptures";
 
 export default function SpeakScreen() {
   const {
     isRecording,
     isTranscribing,
+    pending,
     captureMode,
     setCaptureMode,
     onMicPress,
@@ -23,6 +25,7 @@ export default function SpeakScreen() {
         <VoiceCaptureHero
           isRecording={isRecording}
           isTranscribing={isTranscribing}
+          pendingLines={pending.map(pendingCaptureLabel)}
           captureMode={captureMode}
           onCaptureModeChange={setCaptureMode}
           onMicPress={onMicPress}

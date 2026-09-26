@@ -22,6 +22,12 @@ import { useApiKey } from "@/components/AuthContext";
 import { getApiBasePath, resolveDefaultApiOrigin } from "@/constants/api";
 import { alertCaptureFailure } from "@/lib/captureAlerts";
 import {
+  flushPendingCaptures,
+  isRetryableCaptureStatus,
+  rememberPendingCapture,
+  usePendingCaptureList,
+} from "@/lib/pendingCaptures";
+import {
   RECORD_OPTIONS,
   beginRecording,
   recorderIsLive,
@@ -31,6 +37,7 @@ import {
   uploadCaptureAudio,
   uploadCaptureText,
 } from "@/lib/recording";
+import { createAudioLevelNormalizer } from "../../../lib/integrations/src/audioLevel";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const COLORS = {
@@ -71,6 +78,8 @@ export function useVoiceCapture() {
   const startRecordingRef = useRef<() => Promise<void>>(async () => {});
   /** Drive glow off the JS thread without re-rendering the whole Speak screen. */
   const energyAnim = useRef(new Animated.Value(0.22)).current;
+  const levelRef = useRef(createAudioLevelNormalizer());
+  const pending = usePendingCaptureList();
 
   const withMicLock = useCallback(async <T,>(fn: () => Promise<T>): Promise<T> => {
     const previous = micLockRef.current;
@@ -89,6 +98,29 @@ export function useVoiceCapture() {
   const invalidateQueue = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: [queueUrl] });
   }, [queryClient, queueUrl]);
+
+  const holdOfflineCapture = useCallback(async (input: { text?: string; audioUri?: string }) => {
+    await rememberPendingCapture({ mode: captureModeRef.current, ...input });
+    Alert.alert(
+      "Saved on this phone",
+      input.text
+        ? "I'll send what you said when you're back online."
+        : "I'll send this recording when you're back online.",
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!apiKey.trim() || pending.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      const apiBase = await resolveApiBase();
+      const sent = await flushPendingCaptures(apiBase, apiKey);
+      if (!cancelled && sent > 0) invalidateQueue();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiKey, invalidateQueue, pending.length]);
 
   const setCaptureMode = useCallback((mode: CaptureMode) => {
     captureModeRef.current = mode;
@@ -198,6 +230,10 @@ export function useVoiceCapture() {
         } catch {
           detail = "";
         }
+        if (isRetryableCaptureStatus(res.status)) {
+          await holdOfflineCapture({ audioUri: capture.uri });
+          return;
+        }
         alertCaptureFailure(mode, res.status, detail);
         return;
       }
@@ -262,12 +298,12 @@ export function useVoiceCapture() {
         // Deep solve map already attached to the task — light confirmation.
       }
     } catch {
-      Alert.alert("Couldn't reach Lock In", "Check your connection and try again.");
+      await holdOfflineCapture({ audioUri: capture.uri });
     } finally {
       transcribingRef.current = false;
       setIsTranscribing(false);
     }
-  }, [apiKey, invalidateQueue, recorder, resetRecordingUi, withMicLock]);
+  }, [apiKey, holdOfflineCapture, invalidateQueue, recorder, resetRecordingUi, withMicLock]);
 
   const captureFromText = useCallback(async (raw: string): Promise<boolean> => {
     const trimmed = raw.trim();
@@ -291,6 +327,10 @@ export function useVoiceCapture() {
           detail = body.error ?? "";
         } catch {
           detail = "";
+        }
+        if (isRetryableCaptureStatus(res.status)) {
+          await holdOfflineCapture({ text: trimmed });
+          return true;
         }
         alertCaptureFailure(mode, res.status, detail);
         return false;
@@ -354,13 +394,13 @@ export function useVoiceCapture() {
       }
       return true;
     } catch {
-      Alert.alert("Couldn't reach Lock In", "Check your connection and try again.");
-      return false;
+      await holdOfflineCapture({ text: trimmed });
+      return true;
     } finally {
       transcribingRef.current = false;
       setIsTranscribing(false);
     }
-  }, [apiKey, invalidateQueue, stopOnly]);
+  }, [apiKey, holdOfflineCapture, invalidateQueue, stopOnly]);
 
   useFocusEffect(
     useCallback(() => {
@@ -392,17 +432,19 @@ export function useVoiceCapture() {
 
   useEffect(() => {
     if (!isRecording || isTranscribing) {
+      levelRef.current.reset();
       energyAnim.setValue(0.22);
       return;
     }
     const id = setInterval(() => {
       try {
         const metering = recorder.getStatus().metering;
-        energyAnim.setValue(normalizeMetering(metering));
+        const db = typeof metering === "number" && !Number.isNaN(metering) ? metering : -160;
+        energyAnim.setValue(levelRef.current.fromDb(db));
       } catch {
         // recorder may be mid restart
       }
-    }, 180);
+    }, 80);
     return () => clearInterval(id);
   }, [energyAnim, isRecording, isTranscribing, recorder]);
 
@@ -411,6 +453,7 @@ export function useVoiceCapture() {
     isTranscribing,
     lastCaptured,
     lastTranscript,
+    pending,
     captureMode,
     setCaptureMode,
     onMicPress,
@@ -418,13 +461,6 @@ export function useVoiceCapture() {
     energyAnim,
     stopOnly,
   };
-}
-
-function normalizeMetering(db?: number): number {
-  if (typeof db !== "number" || Number.isNaN(db)) return 0.22;
-  const min = -55;
-  const max = -8;
-  return Math.min(1, Math.max(0, (db - min) / (max - min)));
 }
 
 const RING_COUNT = 2;
@@ -543,6 +579,7 @@ function ListeningAura({
 type VoiceCaptureHeroProps = {
   isRecording: boolean;
   isTranscribing: boolean;
+  pendingLines?: string[];
   captureMode?: CaptureMode;
   onCaptureModeChange?: (mode: CaptureMode) => void;
   onMicPress: () => void;
@@ -554,6 +591,7 @@ type VoiceCaptureHeroProps = {
 export function VoiceCaptureHero({
   isRecording,
   isTranscribing,
+  pendingLines = [],
   captureMode = "tasks",
   onCaptureModeChange,
   onMicPress,
@@ -581,6 +619,13 @@ export function VoiceCaptureHero({
             ? "Listening — tap when you’re done"
             : "Speak or type a to-do"}
       </Text>
+      {pendingLines.length > 0 ? (
+        <Text style={styles.pending} numberOfLines={3}>
+          {pendingLines.length === 1
+            ? `Kept until online: ${pendingLines[0]}`
+            : `${pendingLines.length} notes kept until you're online`}
+        </Text>
+      ) : null}
       <View style={styles.modeRow}>
         <Pressable
           onPress={() => onCaptureModeChange?.("tasks")}
@@ -671,6 +716,14 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 6,
     marginBottom: 4,
+  },
+  pending: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 13,
+    color: COLORS.ink,
+    textAlign: "center",
+    marginTop: 10,
+    lineHeight: 18,
   },
   modeRow: {
     flexDirection: "row",

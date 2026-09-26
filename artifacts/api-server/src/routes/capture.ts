@@ -5,6 +5,8 @@ import {
   transcribeAudio,
   extractFromThought,
   fulfillExtractResult,
+  prepareTranscript,
+  presentCaptureError,
 } from "@workspace/integrations";
 import { seedFollowUpPlanFromExtract } from "../services/followUpPlan";
 import { createCalendarEvents, sendGmail } from "../lib/google";
@@ -22,7 +24,7 @@ const MAX_TYPED_CHARS = 4000;
 
 function publicCaptureError(err: unknown): string {
   const raw = err instanceof Error ? err.message : "Capture failed";
-  return raw.replace(/key=[^&\s"']+/gi, "key=***").slice(0, 220);
+  return presentCaptureError(raw);
 }
 
 function captureMode(req: { query?: Record<string, unknown>; body?: Record<string, unknown> }): "tasks" | "transcribe" {
@@ -246,7 +248,11 @@ router.post("/", audioUpload.single("audio"), async (req, res) => {
       if (typed.length > MAX_TYPED_CHARS) {
         return res.status(400).json({ error: "Note is too long (4000 character max)." });
       }
-      return await persistFromTranscript(req, res, typed, mode);
+      const transcript = prepareTranscript(typed, { fromSpeech: false });
+      if (!transcript) {
+        return res.status(400).json({ error: "Nothing captured. Try speaking again." });
+      }
+      return await persistFromTranscript(req, res, transcript, mode);
     }
 
     if (!req.file) {

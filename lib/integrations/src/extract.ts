@@ -1,5 +1,8 @@
 import { z } from "zod/v4";
 import { chatCompletionJson } from "./llm";
+import { looksLikeIntro, shortIntroEmail } from "./introEmail";
+
+export { INTRO_EMAIL_WORD_LIMIT, clampWords, looksLikeIntro, shortIntroEmail } from "./introEmail";
 
 export const LIFE_AREAS = [
   "work",
@@ -283,8 +286,8 @@ Rules for hard cases:
 **Drafts**
 
 - For \`intro_email\`, \`email_draft\`, and \`message_draft\`, write a subject and a body.
-- Keep the body under 120 words. Use short sentences. Use the user name in the sign off.
-- For \`intro_email\`, write a double opt-in note by default. Give one line on each person and one line on the reason for the intro.
+- For \`email_draft\` and \`message_draft\`, keep the body under 120 words. Use short sentences. Use the user name in the sign off.
+- For \`intro_email\`, write a double opt-in note. Keep the body under 60 words. Use three or four short sentences: one line on each person, one line on the reason, and a line asking them to reply if they want the intro. Sign off with the user name.
 - For \`message_draft\`, put the channel in \`tags\` (e.g. \`slack\`, \`text\`, \`linkedin\`) and keep the body paste-ready.
 - Use \`[PLACEHOLDER: ...]\` for any fact you do not have. Never invent the fact.
 
@@ -564,7 +567,32 @@ function eventFromItem(item: RouterItem): ExtractedEvent | null {
   };
 }
 
-function actionFromItem(item: RouterItem): ExtractedAction {
+function introSavedAction(item: RouterItem, userName?: string): ExtractedAction {
+  const email = shortIntroEmail({
+    subject: item.draft?.subject,
+    body: item.draft?.body,
+    cleanText: item.clean_text || item.raw_text,
+    people: item.people,
+    userName,
+  });
+  const recipients = (item.people ?? [])
+    .map((person) => person.name?.trim())
+    .filter((name): name is string => Boolean(name));
+  return {
+    title: email.subject.slice(0, 500),
+    description: email.body,
+    category: "work",
+    priority: mapPriority(item.priority),
+    nextSteps: [recipients.length > 0 ? `To: ${recipients.join(", ")}` : "Add recipient emails before sending"],
+    checkInHint: checkInHintFromItem(item),
+    routerType: "intro_email",
+    confidence: item.confidence,
+    source: item,
+  };
+}
+
+function actionFromItem(item: RouterItem, userName?: string): ExtractedAction {
+  if (item.type === "intro_email") return introSavedAction(item, userName);
   return {
     title: item.title.trim().slice(0, 500),
     description: descriptionFromItem(item),
@@ -578,21 +606,34 @@ function actionFromItem(item: RouterItem): ExtractedAction {
   };
 }
 
-function fallbackAction(transcript: string): ExtractedAction {
-  const title = transcript.slice(0, 500).trim() || "Follow up on captured thought";
+function fallbackAction(transcript: string, userName?: string): ExtractedAction {
+  const full = transcript.trim();
+  if (looksLikeIntro(full)) {
+    const email = shortIntroEmail({ cleanText: full, userName });
+    return {
+      title: email.subject,
+      description: `${email.body}\n\n${full}`.slice(0, 2000),
+      category: "work",
+      priority: "medium",
+      nextSteps: ["Add recipient emails before sending"],
+      routerType: "intro_email",
+    };
+  }
+  const title = full.slice(0, 120) || "Follow up on captured thought";
   return {
     title,
+    description: full.length > title.length ? full.slice(0, 2000) : undefined,
     category: "other",
     priority: "medium",
-    nextSteps: ["Clarify what this is", "Decide the first 15-minute action"],
+    nextSteps: ["Saved from what you said"],
   };
 }
 
-function mapRouterToExtract(items: RouterItem[], transcript: string): ExtractResult {
-  const actions = items.map(actionFromItem).filter((a) => a.title && a.nextSteps.length > 0);
+function mapRouterToExtract(items: RouterItem[], transcript: string, userName?: string): ExtractResult {
+  const actions = items.map((item) => actionFromItem(item, userName)).filter((a) => a.title && a.nextSteps.length > 0);
   const events = items.map(eventFromItem).filter((e): e is ExtractedEvent => Boolean(e));
   return {
-    actions: actions.length > 0 ? actions : [fallbackAction(transcript)],
+    actions: actions.length > 0 ? actions : [fallbackAction(transcript, userName)],
     events,
     items,
   };
@@ -631,14 +672,14 @@ export async function extractFromThought(
       },
     );
   } catch {
-    return { actions: [fallbackAction(clipped)], events: [] };
+    return { actions: [fallbackAction(clipped, userName)], events: [] };
   }
 
   let parsedJson: unknown;
   try {
     parsedJson = parseJsonObject(raw);
   } catch {
-    return { actions: [fallbackAction(clipped)], events: [] };
+    return { actions: [fallbackAction(clipped, userName)], events: [] };
   }
 
   const parsed = routerSchema.safeParse(parsedJson);
@@ -666,14 +707,14 @@ export async function extractFromThought(
         events: legacy.data.events ?? [],
       };
     }
-    return { actions: [fallbackAction(clipped)], events: [] };
+    return { actions: [fallbackAction(clipped, userName)], events: [] };
   }
 
   if (parsed.data.items.length === 0) {
-    return { actions: [fallbackAction(clipped)], events: [], items: [] };
+    return { actions: [fallbackAction(clipped, userName)], events: [], items: [] };
   }
 
-  return mapRouterToExtract(parsed.data.items, clipped);
+  return mapRouterToExtract(parsed.data.items, clipped, userName);
 }
 
 export async function extractActionsFromThought(transcript: string): Promise<ExtractedAction[]> {

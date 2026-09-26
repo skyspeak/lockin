@@ -67,6 +67,7 @@ export default defineConfig(async ({ command }) => {
       allowedHosts: true,
       fs: {
         strict: true,
+        allow: [path.resolve(import.meta.dirname, "../..")],
       },
     },
     preview: {

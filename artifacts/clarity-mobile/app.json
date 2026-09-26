@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.skyspeak.lockin",
-      "buildNumber": "18",
+      "buildNumber": "19",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Lock In uses the microphone so you can dictate thoughts hands-free.",
         "NSCameraUsageDescription": "Lock In uses the camera to attach photos to thoughts.",
