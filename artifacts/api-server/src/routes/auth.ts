@@ -10,6 +10,8 @@ import {
   actionsTable,
   thoughtsTable,
   followUpPlansTable,
+  pushTokensTable,
+  pushRemindersTable,
 } from "@workspace/db";
 import { requireAuth, isInviteCode } from "../middlewares/auth";
 import { signAccessToken } from "../lib/tokens";
@@ -130,6 +132,8 @@ router.delete("/account", requireAuth, async (req, res) => {
   await db.delete(followUpPlansTable).where(eq(followUpPlansTable.userId, userId));
   await db.delete(actionsTable).where(eq(actionsTable.userId, userId));
   await db.delete(thoughtsTable).where(eq(thoughtsTable.userId, userId));
+  await db.delete(pushTokensTable).where(eq(pushTokensTable.userId, userId));
+  await db.delete(pushRemindersTable).where(eq(pushRemindersTable.userId, userId));
   await db.delete(usersTable).where(eq(usersTable.id, userId));
   res.status(204).end();
 });

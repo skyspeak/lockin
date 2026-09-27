@@ -23,6 +23,7 @@ export const actionsTable = pgTable("actions", {
   thoughtId: integer("thought_id"),
   nextSteps: jsonb("next_steps").$type<string[]>().notNull().default([]),
   snoozedUntil: timestamp("snoozed_until"),
+  snoozeRemindedUntil: timestamp("snooze_reminded_until"),
   completedAt: timestamp("completed_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

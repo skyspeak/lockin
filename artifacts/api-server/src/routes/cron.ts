@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { timingSafeEqual } from "node:crypto";
 import { runDailyDigest } from "../lib/digest";
+import { runReminders } from "../lib/reminders";
 
 const router = Router();
 
@@ -25,6 +26,20 @@ router.post("/digest", async (req, res) => {
   } catch (err) {
     req.log?.error({ err: err instanceof Error ? err.message : "unknown" }, "digest failed");
     res.status(500).json({ error: "Digest failed" });
+  }
+});
+
+router.post("/reminders", async (req, res) => {
+  if (!cronAuthorized(req.headers.authorization)) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+  try {
+    const result = await runReminders();
+    res.json(result);
+  } catch (err) {
+    req.log?.error({ err: err instanceof Error ? err.message : "unknown" }, "reminders failed");
+    res.status(500).json({ error: "Reminders failed" });
   }
 });
 

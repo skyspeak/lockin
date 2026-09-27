@@ -61,6 +61,7 @@
     "eas-cli": "^16.28.0"
   },
   "dependencies": {
-    "expo-audio": "^55.0.14"
+    "expo-audio": "^55.0.14",
+    "expo-notifications": "~0.32.12"
   }
 }

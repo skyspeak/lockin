@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.skyspeak.lockin",
-      "buildNumber": "19",
+      "buildNumber": "20",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Lock In uses the microphone so you can dictate thoughts hands-free.",
         "NSCameraUsageDescription": "Lock In uses the camera to attach photos to thoughts.",
@@ -25,7 +25,7 @@
           "itms-beta",
           "itms-apps"
         ],
-        "UIBackgroundModes": []
+        "UIBackgroundModes": ["remote-notification"]
       },
       "config": {
         "usesNonExemptEncryption": false
@@ -61,6 +61,12 @@
         "expo-audio",
         {
           "microphonePermission": "Lock In uses the microphone so you can capture thoughts by voice."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#ff5a7a"
         }
       ],
       [

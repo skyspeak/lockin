@@ -1,10 +1,13 @@
+import { useCallback, useState } from "react";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFocusEffect } from "expo-router";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useApiKey, useSession } from "@/components/AuthContext";
 import { getApiBasePath, resolveDefaultApiOrigin } from "@/constants/api";
+import { registerPushReminders, reminderPermission } from "@/lib/reminders";
 
 const SERVER_STORAGE_KEY = "clarity_api_server_url";
 const PRIVACY_PATH = "/privacy";
@@ -30,6 +33,27 @@ async function openTestFlightUpdate() {
 export default function SettingsScreen() {
   const { logout, deleteAccount } = useSession();
   const apiKey = useApiKey();
+  const [reminders, setReminders] = useState<"on" | "off" | "unavailable">("off");
+
+  useFocusEffect(
+    useCallback(() => {
+      void reminderPermission().then(setReminders);
+    }, []),
+  );
+
+  const enableReminders = async () => {
+    const stored = await AsyncStorage.getItem(SERVER_STORAGE_KEY);
+    const origin = stored || resolveDefaultApiOrigin();
+    if (!origin || !apiKey) return;
+    const next = await registerPushReminders(getApiBasePath(origin), apiKey);
+    setReminders(next);
+    if (next === "off") {
+      Alert.alert("Reminders are off", "Turn on notifications for Lock In in Settings.", [
+        { text: "Not now", style: "cancel" },
+        { text: "Open Settings", onPress: () => void Linking.openSettings() },
+      ]);
+    }
+  };
 
   const connectGmail = async () => {
     const stored = await AsyncStorage.getItem(SERVER_STORAGE_KEY);
@@ -72,6 +96,17 @@ export default function SettingsScreen() {
       <Text style={styles.title}>Settings</Text>
 
       <View style={styles.card}>
+        <Pressable style={styles.row} onPress={() => void enableReminders()}>
+          <Text style={styles.rowTitle}>Reminders</Text>
+          <Text style={styles.rowHint}>
+            {reminders === "on"
+              ? "On. A nudge at 8am, and again when a snoozed task comes back."
+              : reminders === "unavailable"
+                ? "Needs the installed app on your phone."
+                : "Tap to allow notifications on this phone."}
+          </Text>
+        </Pressable>
+        <View style={styles.hairline} />
         <Pressable style={styles.row} onPress={() => void connectGmail()}>
           <Text style={styles.rowTitle}>Connect Gmail</Text>
           <Text style={styles.rowHint}>Used for the 9pm task email and calendar invites</Text>

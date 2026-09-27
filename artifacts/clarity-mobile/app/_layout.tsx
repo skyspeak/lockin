@@ -18,6 +18,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthScreen } from "@/components/AuthScreen";
 import { ApiKeyContext, SessionContext } from "@/components/AuthContext";
 import { getApiBasePath, normalizeApiOrigin, resolveDefaultApiOrigin } from "@/constants/api";
+import { registerPushReminders, unregisterPushReminders } from "@/lib/reminders";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -69,10 +70,25 @@ export default function RootLayout() {
     }
   }, [fontsLoaded, fontError, keyChecked]);
 
+  useEffect(() => {
+    if (!apiKey) return;
+    let cancelled = false;
+    void (async () => {
+      const origin = (await AsyncStorage.getItem(SERVER_STORAGE_KEY)) || resolveDefaultApiOrigin();
+      if (cancelled || !origin) return;
+      await registerPushReminders(getApiBasePath(origin), apiKey);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiKey]);
+
   const logout = useCallback(() => {
-    AsyncStorage.multiRemove([STORAGE_KEY, SERVER_STORAGE_KEY]).catch(() => {});
-    setAuthTokenGetter(null);
-    setApiKey("");
+    void unregisterPushReminders().finally(() => {
+      AsyncStorage.multiRemove([STORAGE_KEY, SERVER_STORAGE_KEY]).catch(() => {});
+      setAuthTokenGetter(null);
+      setApiKey("");
+    });
   }, []);
 
   const deleteAccount = useCallback(async () => {

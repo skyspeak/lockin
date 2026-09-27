@@ -7,6 +7,7 @@ import actionsRouter from "./actions";
 import captureRouter from "./capture";
 import transcribeRouter from "./transcribe";
 import followUpPlansRouter from "./followUpPlans";
+import pushRouter from "./push";
 import { requireAuth } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -19,5 +20,6 @@ router.use("/capture", requireAuth, captureRouter);
 router.use("/actions", requireAuth, actionsRouter);
 router.use("/transcribe", requireAuth, transcribeRouter);
 router.use("/follow-up-plans", requireAuth, followUpPlansRouter);
+router.use("/push", requireAuth, pushRouter);
 
 export default router;

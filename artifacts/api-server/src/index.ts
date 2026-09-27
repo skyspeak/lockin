@@ -4,6 +4,7 @@ import { pool } from "@workspace/db";
 import { DERIVED_USER_ID } from "./middlewares/auth";
 import { Cron } from "croner";
 import { runDailyDigest } from "./lib/digest";
+import { runReminders } from "./lib/reminders";
 
 // Railway deploys from this package; keep a source change here so lockfile-only
 // commits at the repo root still trigger a rebuild.
@@ -108,6 +109,30 @@ async function migrateSchema(): Promise<void> {
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
   `);
+
+  if (await tableExists("actions")) {
+    await pool.query(
+      "ALTER TABLE actions ADD COLUMN IF NOT EXISTS snooze_reminded_until TIMESTAMP",
+    );
+  }
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS push_tokens (
+      token TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      platform TEXT NOT NULL DEFAULT 'ios',
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query("CREATE INDEX IF NOT EXISTS push_tokens_user_id_idx ON push_tokens (user_id)");
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS push_reminders (
+      user_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      sent_on TEXT NOT NULL,
+      PRIMARY KEY (user_id, kind, sent_on)
+    )
+  `);
 }
 
 migrateSchema()
@@ -124,7 +149,13 @@ migrateSchema()
           logger.error({ err: digestErr instanceof Error ? digestErr.message : "unknown" }, "scheduled digest failed");
         });
       });
+      new Cron("*/5 * * * *", { timezone: "America/Los_Angeles", protect: true }, () => {
+        void runReminders().catch((reminderErr) => {
+          logger.error({ err: reminderErr instanceof Error ? reminderErr.message : "unknown" }, "scheduled reminders failed");
+        });
+      });
       logger.info("Daily digest scheduled for 21:00 America/Los_Angeles");
+      logger.info("Push reminders check every 5 minutes");
     });
   })
   .catch((err) => {
