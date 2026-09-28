@@ -23,6 +23,7 @@ import { getApiBasePath, resolveDefaultApiOrigin } from "@/constants/api";
 import { alertCaptureFailure } from "@/lib/captureAlerts";
 import {
   flushPendingCaptures,
+  isNetworkCaptureError,
   isRetryableCaptureStatus,
   rememberPendingCapture,
   usePendingCaptureList,
@@ -99,28 +100,58 @@ export function useVoiceCapture() {
     queryClient.invalidateQueries({ queryKey: [queueUrl] });
   }, [queryClient, queueUrl]);
 
-  const holdOfflineCapture = useCallback(async (input: { text?: string; audioUri?: string }) => {
-    await rememberPendingCapture({ mode: captureModeRef.current, ...input });
-    Alert.alert(
-      "Saved on this phone",
-      input.text
-        ? "I'll send what you said when you're back online."
-        : "I'll send this recording when you're back online.",
-    );
-  }, []);
+  const holdPendingCapture = useCallback(
+    async (input: { text?: string; audioUri?: string; reason: "network" | "server" }) => {
+      await rememberPendingCapture({ mode: captureModeRef.current, text: input.text, audioUri: input.audioUri });
+      if (input.reason === "server") {
+        Alert.alert(
+          "Couldn't finish that",
+          "Kept on this phone — Lock In will retry. Check Tasks in a moment.",
+        );
+        return;
+      }
+      Alert.alert(
+        "Saved on this phone",
+        input.text
+          ? "I'll send what you said when you're back online."
+          : "I'll send this recording when you're back online.",
+      );
+    },
+    [],
+  );
+
+  const flushPending = useCallback(async () => {
+    if (!apiKey.trim()) return;
+    const apiBase = await resolveApiBase();
+    const sent = await flushPendingCaptures(apiBase, apiKey);
+    if (sent > 0) invalidateQueue();
+  }, [apiKey, invalidateQueue]);
 
   useEffect(() => {
     if (!apiKey.trim() || pending.length === 0) return;
     let cancelled = false;
     void (async () => {
-      const apiBase = await resolveApiBase();
-      const sent = await flushPendingCaptures(apiBase, apiKey);
-      if (!cancelled && sent > 0) invalidateQueue();
+      if (cancelled) return;
+      await flushPending();
     })();
     return () => {
       cancelled = true;
     };
-  }, [apiKey, invalidateQueue, pending.length]);
+  }, [apiKey, flushPending, pending.length]);
+
+  useEffect(() => {
+    if (!apiKey.trim() || pending.length === 0) return;
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") void flushPending();
+    });
+    const timer = setInterval(() => {
+      void flushPending();
+    }, 20_000);
+    return () => {
+      sub.remove();
+      clearInterval(timer);
+    };
+  }, [apiKey, flushPending, pending.length]);
 
   const setCaptureMode = useCallback((mode: CaptureMode) => {
     captureModeRef.current = mode;
@@ -231,7 +262,7 @@ export function useVoiceCapture() {
           detail = "";
         }
         if (isRetryableCaptureStatus(res.status)) {
-          await holdOfflineCapture({ audioUri: capture.uri });
+          await holdPendingCapture({ audioUri: capture.uri, reason: "server" });
           return;
         }
         alertCaptureFailure(mode, res.status, detail);
@@ -297,13 +328,17 @@ export function useVoiceCapture() {
       } else if ((json.kinds ?? []).includes("task") || items.length > 0) {
         // Deep solve map already attached to the task — light confirmation.
       }
-    } catch {
-      await holdOfflineCapture({ audioUri: capture.uri });
+    } catch (err) {
+      if (isNetworkCaptureError(err)) {
+        await holdPendingCapture({ audioUri: capture.uri, reason: "network" });
+        return;
+      }
+      alertCaptureFailure(mode, 0, err instanceof Error ? err.message : "Capture failed");
     } finally {
       transcribingRef.current = false;
       setIsTranscribing(false);
     }
-  }, [apiKey, holdOfflineCapture, invalidateQueue, recorder, resetRecordingUi, withMicLock]);
+  }, [apiKey, holdPendingCapture, invalidateQueue, recorder, resetRecordingUi, withMicLock]);
 
   const captureFromText = useCallback(async (raw: string): Promise<boolean> => {
     const trimmed = raw.trim();
@@ -329,7 +364,7 @@ export function useVoiceCapture() {
           detail = "";
         }
         if (isRetryableCaptureStatus(res.status)) {
-          await holdOfflineCapture({ text: trimmed });
+          await holdPendingCapture({ text: trimmed, reason: "server" });
           return true;
         }
         alertCaptureFailure(mode, res.status, detail);
@@ -393,14 +428,18 @@ export function useVoiceCapture() {
         Alert.alert("Task saved", "Calendar invite did not send. Connect Gmail in Settings.");
       }
       return true;
-    } catch {
-      await holdOfflineCapture({ text: trimmed });
-      return true;
+    } catch (err) {
+      if (isNetworkCaptureError(err)) {
+        await holdPendingCapture({ text: trimmed, reason: "network" });
+        return true;
+      }
+      alertCaptureFailure(mode, 0, err instanceof Error ? err.message : "Capture failed");
+      return false;
     } finally {
       transcribingRef.current = false;
       setIsTranscribing(false);
     }
-  }, [apiKey, holdOfflineCapture, invalidateQueue, stopOnly]);
+  }, [apiKey, holdPendingCapture, invalidateQueue, stopOnly]);
 
   useFocusEffect(
     useCallback(() => {

@@ -3,7 +3,7 @@ import test from "node:test";
 import { createAudioLevelNormalizer } from "./src/audioLevel.ts";
 import { presentCaptureError } from "./src/captureError.ts";
 import { clampWords, looksLikeIntro, shortIntroEmail } from "./src/introEmail.ts";
-import { isRetryableCaptureStatus, retainPending } from "./src/pendingQueue.ts";
+import { isNetworkCaptureError, isRetryableCaptureStatus, retainPending } from "./src/pendingQueue.ts";
 import { isEmptyTranscriptError, prepareTranscript } from "./src/transcript.ts";
 
 test("strips silence hallucinations and keeps a real thank-you", () => {
@@ -63,6 +63,14 @@ test("capture errors stay short", () => {
   assert.equal(presentCaptureError("Gemini transcribe HTTP 429: slow down"), "Transcription didn't come through. Try again.");
   assert.equal(presentCaptureError("Nothing captured. Try speaking again.", 400), "Nothing captured. Try speaking again.");
   assert.equal(presentCaptureError("too many capture requests", 429), "Wait a few seconds, then try again.");
+});
+
+test("only real transport failures count as network capture errors", () => {
+  assert.equal(isNetworkCaptureError(new TypeError("Network request failed")), true);
+  assert.equal(isNetworkCaptureError(new Error("Failed to fetch")), true);
+  assert.equal(isNetworkCaptureError(new Error("The Internet connection appears to be offline.")), true);
+  assert.equal(isNetworkCaptureError(new Error("Unexpected token < in JSON")), false);
+  assert.equal(isNetworkCaptureError(new Error("LLM request failed")), false);
 });
 
 test("negation and links survive cleanup", () => {

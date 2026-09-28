@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { uploadCaptureAudio, uploadCaptureText } from "@/lib/recording";
-import { isRetryableCaptureStatus, retainPending } from "../../../lib/integrations/src/pendingQueue";
+import {
+  isNetworkCaptureError,
+  isRetryableCaptureStatus,
+  retainPending,
+} from "../../../lib/integrations/src/pendingQueue";
 
-export { isRetryableCaptureStatus };
+export { isNetworkCaptureError, isRetryableCaptureStatus };
 
 const STORAGE_KEY = "lockin_pending_captures";
 const MAX_PENDING = 20;

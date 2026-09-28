@@ -190,6 +190,17 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** Prefer the configured Gemini model, then known Flash IDs if that name 404s. */
+function geminiChatConfigs(base: ChatConfig): ChatConfig[] {
+  const models = [
+    base.model,
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-2.5-flash-lite",
+  ];
+  return [...new Set(models.filter(Boolean))].map((model) => ({ ...base, model }));
+}
+
 export async function chatCompletionJson(
   messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
   options: ChatJsonOptions = {},
@@ -199,10 +210,12 @@ export async function chatCompletionJson(
   const errors: string[] = [];
 
   if (gemini) {
-    try {
-      return await completeJsonWithConfig(gemini, messages, options);
-    } catch (err) {
-      errors.push(`gemini: ${errorMessage(err)}`);
+    for (const config of geminiChatConfigs(gemini)) {
+      try {
+        return await completeJsonWithConfig(config, messages, options);
+      } catch (err) {
+        errors.push(`gemini/${config.model}: ${errorMessage(err)}`);
+      }
     }
   }
 
