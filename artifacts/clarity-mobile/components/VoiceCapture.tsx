@@ -333,7 +333,16 @@ export function useVoiceCapture() {
         await holdPendingCapture({ audioUri: capture.uri, reason: "network" });
         return;
       }
-      alertCaptureFailure(mode, 0, err instanceof Error ? err.message : "Capture failed");
+      const message = err instanceof Error ? err.message : "Capture failed";
+      if (/timed out|timeout|aborted/i.test(message)) {
+        Alert.alert(
+          "That took too long",
+          "Check Tasks — it may already be there. Otherwise tap the mic and try again.",
+        );
+        invalidateQueue();
+        return;
+      }
+      alertCaptureFailure(captureModeRef.current, 0, message);
     } finally {
       transcribingRef.current = false;
       setIsTranscribing(false);
@@ -433,7 +442,16 @@ export function useVoiceCapture() {
         await holdPendingCapture({ text: trimmed, reason: "network" });
         return true;
       }
-      alertCaptureFailure(mode, 0, err instanceof Error ? err.message : "Capture failed");
+      const message = err instanceof Error ? err.message : "Capture failed";
+      if (/timed out|timeout|aborted/i.test(message)) {
+        Alert.alert(
+          "That took too long",
+          "Check Tasks — it may already be there. Otherwise try again.",
+        );
+        invalidateQueue();
+        return true;
+      }
+      alertCaptureFailure(captureModeRef.current, 0, message);
       return false;
     } finally {
       transcribingRef.current = false;

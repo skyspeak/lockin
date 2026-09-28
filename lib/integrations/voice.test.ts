@@ -71,6 +71,8 @@ test("only real transport failures count as network capture errors", () => {
   assert.equal(isNetworkCaptureError(new Error("The Internet connection appears to be offline.")), true);
   assert.equal(isNetworkCaptureError(new Error("Unexpected token < in JSON")), false);
   assert.equal(isNetworkCaptureError(new Error("LLM request failed")), false);
+  assert.equal(isNetworkCaptureError(new Error("The request timed out.")), false);
+  assert.equal(isNetworkCaptureError(Object.assign(new Error("Aborted"), { name: "AbortError" })), false);
 });
 
 test("negation and links survive cleanup", () => {

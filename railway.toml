@@ -1,6 +1,15 @@
 [build]
 builder = "RAILPACK"
 buildCommand = "pnpm --filter @workspace/clarity-web run build && pnpm --filter @workspace/api-server run build"
+watchPatterns = [
+  "artifacts/api-server/**",
+  "artifacts/clarity-web/**",
+  "lib/**",
+  "package.json",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+  "railway.toml",
+]
 
 [deploy]
 startCommand = "node --enable-source-maps artifacts/api-server/dist/index.mjs"

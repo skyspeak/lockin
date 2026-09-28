@@ -7,12 +7,15 @@ import {
   fulfillExtractResult,
   prepareTranscript,
   presentCaptureError,
+  type ExtractContext,
+  type ExtractResult,
 } from "@workspace/integrations";
 import { seedFollowUpPlanFromExtract } from "../services/followUpPlan";
 import { createCalendarEvents, sendGmail } from "../lib/google";
 import {
   audioLimiter,
   audioUpload,
+  MAX_AUDIO_BYTES,
   safeAudioFilename,
   sniffAudioMime,
 } from "../lib/audioUpload";
@@ -38,6 +41,104 @@ function typedText(body: unknown): string {
   return typeof text === "string" ? text.trim() : "";
 }
 
+/** JSON body audio from iOS (avoids flaky multipart FormData). */
+function audioFromJsonBody(body: unknown): { buffer: Buffer; mime: string; filename: string } | null {
+  if (!body || typeof body !== "object") return null;
+  const raw = (body as { audioBase64?: unknown; mime?: unknown; filename?: unknown }).audioBase64;
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  const cleaned = raw.replace(/^data:[^;]+;base64,/i, "").replace(/\s+/g, "");
+  let buffer: Buffer;
+  try {
+    buffer = Buffer.from(cleaned, "base64");
+  } catch {
+    return null;
+  }
+  if (buffer.length < 8 || buffer.length > MAX_AUDIO_BYTES) return null;
+  const claimed = String((body as { mime?: unknown }).mime ?? "audio/mp4").toLowerCase();
+  const filename = safeAudioFilename(
+    typeof (body as { filename?: unknown }).filename === "string"
+      ? ((body as { filename: string }).filename)
+      : "audio.m4a",
+  );
+  return { buffer, mime: claimed, filename };
+}
+
+async function enrichCaptureInBackground(
+  req: Request,
+  inserted: Array<typeof actionsTable.$inferSelect>,
+  routed: ExtractResult,
+  extractCtx: ExtractContext,
+): Promise<void> {
+  let extracted = routed;
+  let rows = inserted;
+  try {
+    extracted = await fulfillExtractResult(routed, extractCtx);
+    rows = await Promise.all(
+      inserted.map(async (action, index) => {
+        const item = extracted.actions[index];
+        if (!item) return action;
+        const [updated] = await db
+          .update(actionsTable)
+          .set({
+            title: item.title,
+            description: item.description ?? null,
+            category: item.category,
+            priority: item.priority,
+            nextSteps: item.nextSteps,
+            updatedAt: new Date(),
+          })
+          .where(eq(actionsTable.id, action.id))
+          .returning();
+        return updated ?? action;
+      }),
+    );
+  } catch (err) {
+    req.log.warn(
+      { err: err instanceof Error ? err.message : "unknown" },
+      "fulfill after capture failed; pile already has the tasks",
+    );
+  }
+
+  await Promise.all(
+    rows.map(async (action, index) => {
+      const item = extracted.actions[index];
+      if (!item) return;
+      try {
+        await seedFollowUpPlanFromExtract(action, item);
+      } catch (err) {
+        req.log.warn(
+          { actionId: action.id, err: err instanceof Error ? err.message : "unknown" },
+          "follow-up seed after capture failed",
+        );
+      }
+    }),
+  );
+
+  if (extracted.events.length > 0) {
+    try {
+      await createCalendarEvents(extracted.events);
+    } catch (err) {
+      req.log.warn(
+        { err: err instanceof Error ? err.message : "Calendar failed" },
+        "calendar after capture failed",
+      );
+    }
+  }
+
+  for (const item of extracted.actions) {
+    const email = item.fulfillment?.email;
+    if (!email?.sendNow || email.to.length === 0) continue;
+    try {
+      await sendGmail(email.to, email.subject, email.body);
+    } catch (err) {
+      req.log.warn(
+        { err: err instanceof Error ? err.message : "Email send failed", title: item.title },
+        "intro/email send failed",
+      );
+    }
+  }
+}
+
 async function persistFromTranscript(
   req: Request,
   res: Response,
@@ -47,51 +148,6 @@ async function persistFromTranscript(
   const userId = req.userId;
 
   if (mode === "transcribe") {
-      const [thought] = await db
-        .insert(thoughtsTable)
-        .values({
-          userId,
-          content: transcript,
-          category: "other",
-        })
-        .returning();
-
-      const title = transcript.trim().slice(0, 500) || "Note";
-      const [action] = await db
-        .insert(actionsTable)
-        .values({
-          userId,
-          title,
-          description: transcript.trim().slice(0, 2000),
-          category: "other",
-          priority: "medium",
-          thoughtId: thought.id,
-          nextSteps: ["Captured as a note"],
-        })
-        .returning();
-
-      return res.json({
-        transcript,
-        actions: [action],
-        events: [],
-        kinds: ["note"],
-      });
-    }
-
-    const extractCtx = {
-      userEmail: process.env.LOCKIN_USER_EMAIL || process.env.DIGEST_EMAIL || undefined,
-      userName: process.env.LOCKIN_USER_NAME || undefined,
-      contactsJson: process.env.LOCKIN_CONTACTS_JSON || undefined,
-      timeZone: process.env.LOCKIN_TIMEZONE || "America/Los_Angeles",
-    };
-
-    const routed = await extractFromThought(transcript, new Date(), extractCtx);
-    if (routed.actions.length === 0) {
-      return res.status(400).json({ error: "Nothing captured. Try speaking again." });
-    }
-
-    // Commit the pile first. Fulfill (research / email / solve maps) can be
-    // slow or die on the proxy — that must not drop the tasks.
     const [thought] = await db
       .insert(thoughtsTable)
       .values({
@@ -101,142 +157,119 @@ async function persistFromTranscript(
       })
       .returning();
 
-    let inserted = await db
+    const title = transcript.trim().slice(0, 500) || "Note";
+    const [action] = await db
       .insert(actionsTable)
-      .values(
-        routed.actions.map((item) => ({
-          userId,
-          title: item.title,
-          description: item.description ?? null,
-          category: item.category,
-          priority: item.priority,
-          thoughtId: thought.id,
-          nextSteps: item.nextSteps,
-        })),
-      )
+      .values({
+        userId,
+        title,
+        description: transcript.trim().slice(0, 2000),
+        category: "other",
+        priority: "medium",
+        thoughtId: thought.id,
+        nextSteps: ["Captured as a note"],
+      })
       .returning();
-
-    let extracted = routed;
-    try {
-      extracted = await fulfillExtractResult(routed, extractCtx);
-      inserted = await Promise.all(
-        inserted.map(async (action, index) => {
-          const item = extracted.actions[index];
-          if (!item) return action;
-          const [updated] = await db
-            .update(actionsTable)
-            .set({
-              title: item.title,
-              description: item.description ?? null,
-              category: item.category,
-              priority: item.priority,
-              nextSteps: item.nextSteps,
-              updatedAt: new Date(),
-            })
-            .where(eq(actionsTable.id, action.id))
-            .returning();
-          return updated ?? action;
-        }),
-      );
-    } catch (err) {
-      req.log.warn(
-        { err: err instanceof Error ? err.message : "unknown" },
-        "fulfill after capture failed; pile already has the tasks",
-      );
-    }
-
-    await Promise.all(
-      inserted.map(async (action, index) => {
-        const item = extracted.actions[index];
-        if (!item) return;
-        try {
-          await seedFollowUpPlanFromExtract(action, item);
-        } catch (err) {
-          req.log.warn(
-            { actionId: action.id, err: err instanceof Error ? err.message : "unknown" },
-            "follow-up seed after capture failed",
-          );
-        }
-      }),
-    );
-
-    let calendarError: string | undefined;
-    let calendarCreated = 0;
-    if (extracted.events.length > 0) {
-      try {
-        const result = await createCalendarEvents(extracted.events);
-        calendarCreated = result.created;
-        calendarError = result.error;
-      } catch (err) {
-        calendarError = err instanceof Error ? err.message : "Calendar failed";
-        req.log.warn({ err: calendarError }, "calendar after capture failed");
-      }
-    }
-
-    const emails: Array<{
-      title: string;
-      subject: string;
-      to: string[];
-      sent: boolean;
-      error?: string;
-    }> = [];
-
-    for (const item of extracted.actions) {
-      const email = item.fulfillment?.email;
-      if (!email) continue;
-      if (!email.sendNow || email.to.length === 0) {
-        emails.push({
-          title: item.title,
-          subject: email.subject,
-          to: email.to,
-          sent: false,
-          error:
-            email.missing.length > 0
-              ? `Need: ${email.missing.join(", ")}`
-              : "Recipient email missing — draft saved in the plan",
-        });
-        continue;
-      }
-      try {
-        const sent = await sendGmail(email.to, email.subject, email.body);
-        emails.push({
-          title: item.title,
-          subject: email.subject,
-          to: email.to,
-          sent,
-          error: sent ? undefined : "Gmail is not connected",
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Email send failed";
-        req.log.warn({ err: message, title: item.title }, "intro/email send failed");
-        emails.push({
-          title: item.title,
-          subject: email.subject,
-          to: email.to,
-          sent: false,
-          error: message,
-        });
-      }
-    }
-
-    const research = extracted.actions
-      .filter((item) => item.routerType === "research_now" || item.routerType === "research_topic")
-      .map((item) => ({
-        title: item.title,
-        type: item.routerType,
-        answer: item.fulfillment?.researchAnswer || item.fulfillment?.summary || item.description || "",
-      }));
 
     return res.json({
       transcript,
-      actions: inserted,
-      events: extracted.events,
-      calendarCreated,
-      calendarError,
-      emails,
-      research,
-      kinds: extracted.actions.map((item) => item.routerType ?? "task"),
+      actions: [action],
+      events: [],
+      kinds: ["note"],
     });
+  }
+
+  const extractCtx: ExtractContext = {
+    userEmail: process.env.LOCKIN_USER_EMAIL || process.env.DIGEST_EMAIL || undefined,
+    userName: process.env.LOCKIN_USER_NAME || undefined,
+    contactsJson: process.env.LOCKIN_CONTACTS_JSON || undefined,
+    timeZone: process.env.LOCKIN_TIMEZONE || "America/Los_Angeles",
+  };
+
+  const routed = await extractFromThought(transcript, new Date(), extractCtx);
+  if (routed.actions.length === 0) {
+    return res.status(400).json({ error: "Nothing captured. Try speaking again." });
+  }
+
+  // Commit the pile, then answer the phone immediately. Slow fulfill / calendar /
+  // email used to keep the HTTP socket open until Railway/proxy killed it — the
+  // app then treated that as "offline" and re-queued a capture that already landed.
+  const [thought] = await db
+    .insert(thoughtsTable)
+    .values({
+      userId,
+      content: transcript,
+      category: "other",
+    })
+    .returning();
+
+  const inserted = await db
+    .insert(actionsTable)
+    .values(
+      routed.actions.map((item) => ({
+        userId,
+        title: item.title,
+        description: item.description ?? null,
+        category: item.category,
+        priority: item.priority,
+        thoughtId: thought.id,
+        nextSteps: item.nextSteps,
+      })),
+    )
+    .returning();
+
+  const payload = {
+    transcript,
+    actions: inserted,
+    events: routed.events,
+    calendarCreated: 0,
+    emails: [] as Array<{ title: string; subject: string; to: string[]; sent: boolean; error?: string }>,
+    research: [] as Array<{ title: string; type?: string; answer: string }>,
+    kinds: routed.actions.map((item) => item.routerType ?? "task"),
+    enriching: true,
+  };
+
+  res.json(payload);
+
+  void enrichCaptureInBackground(req, inserted, routed, extractCtx).catch((err) => {
+    req.log.warn(
+      { err: err instanceof Error ? err.message : "unknown" },
+      "background enrich after capture failed",
+    );
+  });
+
+  return res;
+}
+
+async function captureFromAudioBuffer(
+  req: Request,
+  res: Response,
+  buffer: Buffer,
+  claimedMime: string,
+  filename: string,
+  mode: "tasks" | "transcribe",
+): Promise<Response> {
+  if (buffer.length < 8) {
+    return res.status(400).json({ error: "Recording too short. Hold the mic and speak a bit longer." });
+  }
+
+  const sniffed = sniffAudioMime(buffer);
+  if (!sniffed) {
+    req.log.warn({ claimed: claimedMime, bytes: buffer.length }, "capture rejected unknown audio");
+    return res.status(415).json({ error: "Unsupported audio type" });
+  }
+
+  const transcript = await transcribeAudio({
+    buffer,
+    mime: sniffed,
+    filename,
+  });
+
+  if (!transcript.trim()) {
+    return res.status(400).json({ error: "Nothing captured. Try speaking again." });
+  }
+
+  return persistFromTranscript(req, res, transcript, mode);
 }
 
 router.post("/", audioUpload.single("audio"), async (req, res) => {
@@ -255,37 +288,36 @@ router.post("/", audioUpload.single("audio"), async (req, res) => {
       return await persistFromTranscript(req, res, transcript, mode);
     }
 
+    const fromJson = audioFromJsonBody(req.body);
+    if (fromJson) {
+      return await captureFromAudioBuffer(
+        req,
+        res,
+        fromJson.buffer,
+        fromJson.mime,
+        fromJson.filename,
+        mode,
+      );
+    }
+
     if (!req.file) {
       return res.status(400).json({ error: "Type a note or attach audio." });
     }
 
-    if (req.file.buffer.length < 8) {
-      return res.status(400).json({ error: "Recording too short. Hold the mic and speak a bit longer." });
-    }
-
-    const sniffed = sniffAudioMime(req.file.buffer);
-    const claimed = (req.file.mimetype || "").toLowerCase();
-    if (!sniffed) {
-      req.log.warn({ claimed, bytes: req.file.buffer.length }, "capture rejected unknown audio");
-      return res.status(415).json({ error: "Unsupported audio type" });
-    }
-
-    const transcript = await transcribeAudio({
-      buffer: req.file.buffer,
-      mime: sniffed,
-      filename: safeAudioFilename(req.file.originalname),
-    });
-
-    if (!transcript.trim()) {
-      return res.status(400).json({ error: "Nothing captured. Try speaking again." });
-    }
-
-    return await persistFromTranscript(req, res, transcript, mode);
+    return await captureFromAudioBuffer(
+      req,
+      res,
+      req.file.buffer,
+      req.file.mimetype || "",
+      safeAudioFilename(req.file.originalname),
+      mode,
+    );
   } catch (err) {
     req.log.error(
       { err: err instanceof Error ? err.message : "unknown" },
       "capture failed",
     );
+    if (res.headersSent) return res;
     return res.status(500).json({ error: publicCaptureError(err) });
   }
 });

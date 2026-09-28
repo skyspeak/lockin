@@ -5,7 +5,7 @@ export function normalizeApiOrigin(url: string): string {
   if (!/^https?:\/\//i.test(normalized)) {
     normalized = `https://${normalized}`;
   }
-  return normalized.replace(/\/+$/, "");
+  return normalized.replace(/\/+$/, "").replace(/\/api$/i, "");
 }
 
 export function getApiBasePath(origin: string): string {

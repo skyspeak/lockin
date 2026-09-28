@@ -8,6 +8,7 @@ import { runReminders } from "./lib/reminders";
 
 // Railway deploys from this package; keep a source change here so lockfile-only
 // commits at the repo root still trigger a rebuild.
+// Redeploy bump: fast capture response + JSON audio (2026-09-28).
 
 const rawPort = process.env["PORT"];
 

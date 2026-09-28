@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { uploadCaptureAudio, uploadCaptureText } from "@/lib/recording";
+import * as FileSystem from "expo-file-system/legacy";
+import { persistRecordingCopy, uploadCaptureAudio, uploadCaptureText } from "@/lib/recording";
 import {
   isNetworkCaptureError,
   isRetryableCaptureStatus,
@@ -57,11 +58,21 @@ export async function rememberPendingCapture(input: {
   audioUri?: string;
 }): Promise<void> {
   const text = input.text?.trim();
-  const audioUri = input.audioUri?.trim();
+  let audioUri = input.audioUri?.trim();
   if (!text && !audioUri) return;
+
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  if (audioUri) {
+    try {
+      audioUri = await persistRecordingCopy(audioUri, id);
+    } catch {
+      // Keep the original URI; flush may still succeed if the temp file lives.
+    }
+  }
+
   const current = await readAll();
   const next: PendingCapture = {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    id,
     mode: input.mode,
     createdAt: Date.now(),
     text: text || undefined,
@@ -73,6 +84,16 @@ export async function rememberPendingCapture(input: {
 export function pendingCaptureLabel(item: PendingCapture): string {
   if (item.text?.trim()) return item.text.trim();
   return "Voice note saved on this phone";
+}
+
+async function dropMissingAudio(item: PendingCapture): Promise<boolean> {
+  if (!item.audioUri || item.text) return false;
+  try {
+    const info = await FileSystem.getInfoAsync(item.audioUri);
+    return !info.exists;
+  } catch {
+    return true;
+  }
 }
 
 let flushing: Promise<number> | null = null;
@@ -98,6 +119,10 @@ async function sendPending(apiBase: string, apiKey: string): Promise<number> {
 
     for (const item of [...items].reverse()) {
       try {
+        if (await dropMissingAudio(item)) {
+          dropIds.add(item.id);
+          continue;
+        }
         let res: Response;
         if (item.text) {
           res = await uploadCaptureText(apiBase, apiKey, item.text, item.mode);

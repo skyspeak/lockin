@@ -64,6 +64,9 @@ app.use(
   }),
 );
 
+// Voice captures may arrive as JSON base64 (iOS FormData is flaky). Keep a
+// large limit only on /api/capture; everything else stays small.
+app.use("/api/capture", express.json({ limit: "12mb" }));
 app.use(express.json({ limit: "32kb" }));
 app.use(express.urlencoded({ extended: false, limit: "32kb" }));
 

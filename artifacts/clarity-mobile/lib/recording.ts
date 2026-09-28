@@ -4,6 +4,7 @@ import {
   setAudioModeAsync,
   type AudioRecorder,
 } from "expo-audio";
+import * as FileSystem from "expo-file-system/legacy";
 
 /** Always pass options into prepare so iOS recreates AVAudioRecorder after a real stop. */
 export const RECORD_OPTIONS = {
@@ -14,6 +15,7 @@ export const RECORD_OPTIONS = {
 export const MIN_RECORDING_MS = 350;
 const URI_POLL_MS = 60;
 const URI_POLL_ATTEMPTS = 6;
+const CAPTURE_TIMEOUT_MS = 55_000;
 
 export function wait(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -128,21 +130,51 @@ export function recordingTooShort(durationMillis: number): boolean {
   return durationMillis > 0 && durationMillis < MIN_RECORDING_MS;
 }
 
+/** Copy a temp recording into durable document storage so pending flush still works. */
+export async function persistRecordingCopy(uri: string, id: string): Promise<string> {
+  const root = FileSystem.documentDirectory;
+  if (!root) return uri;
+  const dir = `${root}pending-captures/`;
+  const info = await FileSystem.getInfoAsync(dir);
+  if (!info.exists) {
+    await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+  }
+  const { ext } = mimeForRecordingUri(uri);
+  const dest = `${dir}${id}.${ext}`;
+  await FileSystem.copyAsync({ from: uri, to: dest });
+  return dest;
+}
+
+async function readAudioBase64(uri: string): Promise<string> {
+  return FileSystem.readAsStringAsync(uri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+}
+
 export async function uploadCaptureAudio(
   apiBase: string,
   apiKey: string,
   uri: string,
   mode: "tasks" | "transcribe",
 ): Promise<Response> {
-  const form = new FormData();
   const { ext, mime } = mimeForRecordingUri(uri);
-  // @ts-ignore — React Native FormData file upload
-  form.append("audio", { uri, name: `audio.${ext}`, type: mime });
+  const audioBase64 = await readAudioBase64(uri);
+  if (!audioBase64) {
+    throw new Error("Could not read that recording");
+  }
 
   return fetch(`${apiBase}/capture?mode=${mode}`, {
     method: "POST",
-    body: form,
-    headers: { Authorization: `Bearer ${apiKey}` },
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      audioBase64,
+      mime,
+      filename: `audio.${ext}`,
+    }),
+    signal: AbortSignal.timeout(CAPTURE_TIMEOUT_MS),
   });
 }
 
@@ -159,5 +191,6 @@ export async function uploadCaptureText(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ text }),
+    signal: AbortSignal.timeout(CAPTURE_TIMEOUT_MS),
   });
 }
