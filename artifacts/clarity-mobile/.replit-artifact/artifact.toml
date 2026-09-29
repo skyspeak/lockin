@@ -1,6 +1,6 @@
 kind = "mobile"
 previewPath = "/mobile/"
-title = "Clarity — Mobile"
+title = "Lock In — Mobile"
 version = "1.0.0"
 id = "artifacts/clarity-mobile"
 router = "expo-domain"

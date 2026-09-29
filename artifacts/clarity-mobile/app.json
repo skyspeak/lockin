@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "clarity",
+    "scheme": "lockin",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -16,8 +16,10 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.skyspeak.lockin",
-      "buildNumber": "37",
+      "buildNumber": "39",
       "infoPlist": {
+        "CFBundleDisplayName": "Lock In",
+        "CFBundleName": "Lock In",
         "NSMicrophoneUsageDescription": "Lock In uses the microphone so you can dictate thoughts hands-free.",
         "NSCameraUsageDescription": "Lock In uses the camera to attach photos to thoughts.",
         "ITSAppUsesNonExemptEncryption": false,
@@ -36,6 +38,7 @@
     "android": {
       "package": "com.skyspeak.lockin",
       "versionCode": 1,
+      "label": "Lock In",
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",
@@ -48,7 +51,9 @@
       }
     },
     "web": {
-      "favicon": "./assets/images/icon.png"
+      "favicon": "./assets/images/icon.png",
+      "name": "Lock In",
+      "shortName": "Lock In"
     },
     "plugins": [
       [
