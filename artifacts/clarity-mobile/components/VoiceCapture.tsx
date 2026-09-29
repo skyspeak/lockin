@@ -50,9 +50,6 @@ const COLORS = {
 };
 
 const SERVER_STORAGE_KEY = "clarity_api_server_url";
-const CAPTURE_MODE_KEY = "lockin_capture_mode";
-
-export type CaptureMode = "tasks" | "transcribe";
 
 async function resolveApiBase(): Promise<string> {
   const stored = await AsyncStorage.getItem(SERVER_STORAGE_KEY);
@@ -69,8 +66,6 @@ export function useVoiceCapture() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [lastCaptured, setLastCaptured] = useState<{ title: string; nextSteps: string[] }[]>([]);
   const [lastTranscript, setLastTranscript] = useState("");
-  const [captureMode, setCaptureModeState] = useState<CaptureMode>("tasks");
-  const captureModeRef = useRef<CaptureMode>("tasks");
   const focusedRef = useRef(false);
   const recordingRef = useRef(false);
   const transcribingRef = useRef(false);
@@ -102,7 +97,7 @@ export function useVoiceCapture() {
 
   const holdPendingCapture = useCallback(
     async (input: { text?: string; audioUri?: string; reason: "network" | "server" }) => {
-      await rememberPendingCapture({ mode: captureModeRef.current, text: input.text, audioUri: input.audioUri });
+      await rememberPendingCapture({ mode: "tasks", text: input.text, audioUri: input.audioUri });
       if (input.reason === "server") {
         Alert.alert(
           "Couldn't finish that",
@@ -152,21 +147,6 @@ export function useVoiceCapture() {
       clearInterval(timer);
     };
   }, [apiKey, flushPending, pending.length]);
-
-  const setCaptureMode = useCallback((mode: CaptureMode) => {
-    captureModeRef.current = mode;
-    setCaptureModeState(mode);
-    AsyncStorage.setItem(CAPTURE_MODE_KEY, mode).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    AsyncStorage.getItem(CAPTURE_MODE_KEY).then((stored) => {
-      if (stored === "transcribe" || stored === "tasks") {
-        captureModeRef.current = stored;
-        setCaptureModeState(stored);
-      }
-    }).catch(() => {});
-  }, []);
 
   const resetRecordingUi = useCallback(() => {
     recordingRef.current = false;
@@ -251,8 +231,7 @@ export function useVoiceCapture() {
 
     try {
       const apiBase = await resolveApiBase();
-      const mode = captureModeRef.current;
-      const res = await uploadCaptureAudio(apiBase, apiKey, capture.uri, mode);
+      const res = await uploadCaptureAudio(apiBase, apiKey, capture.uri, "tasks");
       if (!res.ok) {
         let detail = "";
         try {
@@ -265,33 +244,16 @@ export function useVoiceCapture() {
           await holdPendingCapture({ audioUri: capture.uri, reason: "server" });
           return;
         }
-        alertCaptureFailure(mode, res.status, detail);
+        alertCaptureFailure("tasks", res.status, detail);
         return;
       }
       const json = (await res.json()) as {
         transcript?: string;
         actions?: { title: string; nextSteps?: string[]; description?: string | null }[];
-        calendarCreated?: number;
-        calendarError?: string;
-        emails?: Array<{ title: string; subject: string; to: string[]; sent: boolean; error?: string }>;
-        research?: Array<{ title: string; type?: string; answer: string }>;
-        kinds?: string[];
       };
       const items = (json.actions ?? [])
         .map((a) => ({ title: a.title, nextSteps: a.nextSteps ?? [] }))
         .filter((a) => a.title);
-      const text = json.transcript?.trim() || "";
-      if (mode === "transcribe") {
-        if (!text && items.length === 0) {
-          Alert.alert("Nothing captured", "Try speaking again.");
-          return;
-        }
-        setLastTranscript(text);
-        setLastCaptured(items);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        invalidateQueue();
-        return;
-      }
       if (items.length === 0) {
         Alert.alert("Nothing captured", "Try speaking again.");
         return;
@@ -301,9 +263,6 @@ export function useVoiceCapture() {
       setLastTranscript("");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       invalidateQueue();
-
-      // Calendar / email / research finish in the background now — don't block
-      // the Success haptic on those side effects.
     } catch (err) {
       if (isNetworkCaptureError(err)) {
         await holdPendingCapture({ audioUri: capture.uri, reason: "network" });
@@ -318,7 +277,7 @@ export function useVoiceCapture() {
         invalidateQueue();
         return;
       }
-      alertCaptureFailure(captureModeRef.current, 0, message);
+      alertCaptureFailure("tasks", 0, message);
     } finally {
       transcribingRef.current = false;
       setIsTranscribing(false);
@@ -337,7 +296,7 @@ export function useVoiceCapture() {
     // Show the note in the hero immediately — server now ACKs before LLM work.
     const preview = [{ title: trimmed.slice(0, 120), nextSteps: ["Locking in…"] }];
     setLastCaptured(preview);
-    setLastTranscript(captureModeRef.current === "transcribe" ? trimmed : "");
+    setLastTranscript("");
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     invalidateQueue();
 
@@ -345,8 +304,7 @@ export function useVoiceCapture() {
     setIsTranscribing(true);
     try {
       const apiBase = await resolveApiBase();
-      const mode = captureModeRef.current;
-      const res = await uploadCaptureText(apiBase, apiKey, trimmed, mode);
+      const res = await uploadCaptureText(apiBase, apiKey, trimmed, "tasks");
       if (!res.ok) {
         let detail = "";
         try {
@@ -360,37 +318,21 @@ export function useVoiceCapture() {
           return true;
         }
         setLastCaptured([]);
-        setLastTranscript("");
-        alertCaptureFailure(mode, res.status, detail);
+        alertCaptureFailure("tasks", res.status, detail);
         return false;
       }
       const json = (await res.json()) as {
-        transcript?: string;
         actions?: { title: string; nextSteps?: string[]; description?: string | null }[];
       };
       const items = (json.actions ?? [])
         .map((a) => ({ title: a.title, nextSteps: a.nextSteps ?? [] }))
         .filter((a) => a.title);
-      if (mode === "transcribe") {
-        const text = json.transcript?.trim() || trimmed;
-        if (!text && items.length === 0) {
-          setLastCaptured([]);
-          setLastTranscript("");
-          Alert.alert("Nothing captured", "Try a more specific note.");
-          return false;
-        }
-        setLastTranscript(text);
-        setLastCaptured(items.length > 0 ? items : preview);
-        invalidateQueue();
-        return true;
-      }
       if (items.length === 0) {
         setLastCaptured([]);
         Alert.alert("Nothing captured", "Try a more specific to-do.");
         return false;
       }
       setLastCaptured(items);
-      setLastTranscript("");
       invalidateQueue();
       return true;
     } catch (err) {
@@ -408,8 +350,7 @@ export function useVoiceCapture() {
         return true;
       }
       setLastCaptured([]);
-      setLastTranscript("");
-      alertCaptureFailure(captureModeRef.current, 0, message);
+      alertCaptureFailure("tasks", 0, message);
       return false;
     } finally {
       transcribingRef.current = false;
@@ -469,8 +410,6 @@ export function useVoiceCapture() {
     lastCaptured,
     lastTranscript,
     pending,
-    captureMode,
-    setCaptureMode,
     onMicPress,
     captureFromText,
     energyAnim,
@@ -579,8 +518,6 @@ type VoiceCaptureHeroProps = {
   isRecording: boolean;
   isTranscribing: boolean;
   pendingLines?: string[];
-  captureMode?: CaptureMode;
-  onCaptureModeChange?: (mode: CaptureMode) => void;
   onMicPress: () => void;
   onTypedSubmit: (text: string) => Promise<boolean>;
   onDraftFocus?: () => void;
@@ -591,15 +528,12 @@ export function VoiceCaptureHero({
   isRecording,
   isTranscribing,
   pendingLines = [],
-  captureMode = "tasks",
-  onCaptureModeChange,
   onMicPress,
   onTypedSubmit,
   onDraftFocus,
   energyAnim,
 }: VoiceCaptureHeroProps) {
   const [draft, setDraft] = useState("");
-  const transcribeOnly = captureMode === "transcribe";
 
   const submitDraft = async () => {
     const text = draft.trim();
@@ -627,20 +561,6 @@ export function VoiceCaptureHero({
             : `${pendingLines.length} notes kept until you're online`}
         </Text>
       ) : null}
-      <View style={styles.modeRow}>
-        <Pressable
-          onPress={() => onCaptureModeChange?.("tasks")}
-          style={[styles.modeChip, !transcribeOnly && styles.modeChipOn]}
-        >
-          <Text style={[styles.modeChipText, !transcribeOnly && styles.modeChipTextOn]}>Tasks</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => onCaptureModeChange?.("transcribe")}
-          style={[styles.modeChip, transcribeOnly && styles.modeChipOn]}
-        >
-          <Text style={[styles.modeChipText, transcribeOnly && styles.modeChipTextOn]}>Notes</Text>
-        </Pressable>
-      </View>
 
       <View style={styles.micCol}>
         <View style={styles.micStage}>
@@ -726,32 +646,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
     lineHeight: 18,
   },
-  modeRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 12,
-  },
-  modeChip: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#f5d5c4",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: "transparent",
-  },
-  modeChipOn: {
-    borderColor: COLORS.accent,
-    backgroundColor: COLORS.accent + "12",
-  },
-  modeChipText: {
-    fontFamily: "Inter_500Medium",
-    fontSize: 13,
-    color: COLORS.inkDim,
-  },
-  modeChipTextOn: {
-    color: COLORS.accent,
-  },
-  micCol: { alignItems: "center", marginTop: 8 },
+  micCol: { alignItems: "center", marginTop: 16 },
   micStage: {
     width: 160,
     height: 160,

@@ -8,8 +8,6 @@ export default function SpeakScreen() {
     isRecording,
     isTranscribing,
     pending,
-    captureMode,
-    setCaptureMode,
     onMicPress,
     captureFromText,
     energyAnim,
@@ -26,8 +24,6 @@ export default function SpeakScreen() {
           isRecording={isRecording}
           isTranscribing={isTranscribing}
           pendingLines={pending.map(pendingCaptureLabel)}
-          captureMode={captureMode}
-          onCaptureModeChange={setCaptureMode}
           onMicPress={onMicPress}
           onTypedSubmit={captureFromText}
           onDraftFocus={() => void stopOnly()}
