@@ -2,15 +2,18 @@ import { and, eq, inArray, isNull, lte, or } from "drizzle-orm";
 import { db, pool, actionsTable, pushRemindersTable, pushTokensTable } from "@workspace/db";
 import { logger } from "./logger";
 import {
-  inMorningReminderWindow,
+  inScheduledReminderWindow,
   localDateKey,
-  morningReminder,
+  openTasksReminder,
+  SCHEDULED_REMINDERS,
   shouldRemindSnooze,
   snoozeReminder,
+  type ScheduledReminderKind,
 } from "./reminderPlan";
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 const OPEN_STATUSES = ["pending", "in-progress"] as const;
+const TIME_ZONE = "America/Los_Angeles";
 
 type ExpoTicket = {
   status?: string;
@@ -26,9 +29,11 @@ type PushMessage = {
   data?: { actionId?: number };
 };
 
-export async function runReminders(now = new Date()): Promise<{ snooze: number; morning: number }> {
+export async function runReminders(
+  now = new Date(),
+): Promise<{ snooze: number; scheduled: Record<string, number> }> {
   const tokens = await db.select().from(pushTokensTable);
-  if (tokens.length === 0) return { snooze: 0, morning: 0 };
+  if (tokens.length === 0) return { snooze: 0, scheduled: {} };
 
   const byUser = new Map<string, string[]>();
   for (const row of tokens) {
@@ -94,60 +99,17 @@ export async function runReminders(now = new Date()): Promise<{ snooze: number; 
     );
   }
 
-  let morning = 0;
-  if (inMorningReminderWindow(now)) {
-    const sentOn = localDateKey(now, "America/Los_Angeles");
-    const already = await db
-      .select({ userId: pushRemindersTable.userId })
-      .from(pushRemindersTable)
-      .where(and(eq(pushRemindersTable.kind, "morning"), eq(pushRemindersTable.sentOn, sentOn), inArray(pushRemindersTable.userId, userIds)));
-    const sentUsers = new Set(already.map((row) => row.userId));
-
-    const open = await db
-      .select({
-        userId: actionsTable.userId,
-        title: actionsTable.title,
-      })
-      .from(actionsTable)
-      .where(
-        and(
-          inArray(actionsTable.userId, userIds),
-          inArray(actionsTable.status, [...OPEN_STATUSES]),
-          or(isNull(actionsTable.snoozedUntil), lte(actionsTable.snoozedUntil, now)),
-        ),
-      );
-
-    const titlesByUser = new Map<string, string[]>();
-    for (const action of open) {
-      const list = titlesByUser.get(action.userId) ?? [];
-      list.push(action.title);
-      titlesByUser.set(action.userId, list);
-    }
-
-    for (const [userId, titles] of titlesByUser) {
-      if (sentUsers.has(userId)) continue;
-      const note = morningReminder(titles);
-      if (!note) continue;
-      const destinations = byUser.get(userId) ?? [];
-      const messages = destinations.map((token) => ({
-        to: token,
-        title: note.title,
-        body: note.body,
-        sound: "default" as const,
-        channelId: "reminders",
-      }));
-      const results = await sendExpoPush(messages);
-      results.forEach((result, index) => {
-        if (result.drop) dropTokens.add(messages[index]?.to ?? "");
-      });
-      if (results.some((result) => result.ok)) {
-        await db
-          .insert(pushRemindersTable)
-          .values({ userId, kind: "morning", sentOn })
-          .onConflictDoNothing();
-        morning += 1;
-      }
-    }
+  const scheduled: Record<string, number> = {};
+  for (const slot of SCHEDULED_REMINDERS) {
+    if (!inScheduledReminderWindow(slot.hour, now, TIME_ZONE)) continue;
+    scheduled[slot.kind] = await sendOpenTaskReminder({
+      kind: slot.kind,
+      headline: slot.title,
+      now,
+      byUser,
+      userIds,
+      dropTokens,
+    });
   }
 
   const dead = [...dropTokens].filter(Boolean);
@@ -155,11 +117,82 @@ export async function runReminders(now = new Date()): Promise<{ snooze: number; 
     await db.delete(pushTokensTable).where(inArray(pushTokensTable.token, dead));
   }
 
-  if (uniqueReminded.length > 0 || morning > 0) {
-    logger.info({ snooze: uniqueReminded.length, morning }, "reminders sent");
+  const scheduledTotal = Object.values(scheduled).reduce((sum, n) => sum + n, 0);
+  if (uniqueReminded.length > 0 || scheduledTotal > 0) {
+    logger.info({ snooze: uniqueReminded.length, scheduled }, "reminders sent");
   }
 
-  return { snooze: uniqueReminded.length, morning };
+  return { snooze: uniqueReminded.length, scheduled };
+}
+
+async function sendOpenTaskReminder(input: {
+  kind: ScheduledReminderKind;
+  headline: string;
+  now: Date;
+  byUser: Map<string, string[]>;
+  userIds: string[];
+  dropTokens: Set<string>;
+}): Promise<number> {
+  const sentOn = localDateKey(input.now, TIME_ZONE);
+  const already = await db
+    .select({ userId: pushRemindersTable.userId })
+    .from(pushRemindersTable)
+    .where(
+      and(
+        eq(pushRemindersTable.kind, input.kind),
+        eq(pushRemindersTable.sentOn, sentOn),
+        inArray(pushRemindersTable.userId, input.userIds),
+      ),
+    );
+  const sentUsers = new Set(already.map((row) => row.userId));
+
+  const open = await db
+    .select({
+      userId: actionsTable.userId,
+      title: actionsTable.title,
+    })
+    .from(actionsTable)
+    .where(
+      and(
+        inArray(actionsTable.userId, input.userIds),
+        inArray(actionsTable.status, [...OPEN_STATUSES]),
+        or(isNull(actionsTable.snoozedUntil), lte(actionsTable.snoozedUntil, input.now)),
+      ),
+    );
+
+  const titlesByUser = new Map<string, string[]>();
+  for (const action of open) {
+    const list = titlesByUser.get(action.userId) ?? [];
+    list.push(action.title);
+    titlesByUser.set(action.userId, list);
+  }
+
+  let sent = 0;
+  for (const [userId, titles] of titlesByUser) {
+    if (sentUsers.has(userId)) continue;
+    const note = openTasksReminder(titles, input.headline);
+    if (!note) continue;
+    const destinations = input.byUser.get(userId) ?? [];
+    const messages = destinations.map((token) => ({
+      to: token,
+      title: note.title,
+      body: note.body,
+      sound: "default" as const,
+      channelId: "reminders",
+    }));
+    const results = await sendExpoPush(messages);
+    results.forEach((result, index) => {
+      if (result.drop) input.dropTokens.add(messages[index]?.to ?? "");
+    });
+    if (results.some((result) => result.ok)) {
+      await db
+        .insert(pushRemindersTable)
+        .values({ userId, kind: input.kind, sentOn })
+        .onConflictDoNothing();
+      sent += 1;
+    }
+  }
+  return sent;
 }
 
 async function sendExpoPush(messages: PushMessage[]): Promise<Array<{ ok: boolean; drop: boolean }>> {

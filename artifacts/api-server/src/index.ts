@@ -156,7 +156,7 @@ migrateSchema()
         });
       });
       logger.info("Daily digest scheduled for 21:00 America/Los_Angeles");
-      logger.info("Push reminders check every 5 minutes");
+      logger.info("Push reminders check every 5 minutes (1pm + 5pm open-task nudges)");
     });
   })
   .catch((err) => {

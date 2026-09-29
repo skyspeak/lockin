@@ -100,7 +100,7 @@ export default function SettingsScreen() {
           <Text style={styles.rowTitle}>Reminders</Text>
           <Text style={styles.rowHint}>
             {reminders === "on"
-              ? "On. A nudge at 8am, and again when a snoozed task comes back."
+              ? "On. Nudges at 1pm and 5pm, and again when a snoozed task comes back."
               : reminders === "unavailable"
                 ? "Needs the installed app on your phone."
                 : "Tap to allow notifications on this phone."}
