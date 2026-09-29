@@ -104,12 +104,11 @@ export function AuthScreen({ onAuth }: AuthScreenProps) {
           recyclingKey="lockin-mascot"
           cachePolicy="memory-disk"
         />
-        <Text style={styles.kicker}>dump it. lock it.</Text>
         <Text style={styles.title}>Lock In</Text>
 
         {step === "invite" ? (
           <>
-            <Text style={styles.subtitle}>Got an invite? Slip it in.</Text>
+            <Text style={styles.subtitle}>Enter your invite code.</Text>
             <Text style={styles.label}>Invite code</Text>
             <TextInput
               style={styles.input}
@@ -118,7 +117,7 @@ export function AuthScreen({ onAuth }: AuthScreenProps) {
                 setInviteCode(t);
                 setError("");
               }}
-              placeholder="your secret handshake"
+              placeholder="Invite code"
               placeholderTextColor="#c9a99a"
               secureTextEntry
               autoCapitalize="none"
@@ -133,13 +132,13 @@ export function AuthScreen({ onAuth }: AuthScreenProps) {
               onPress={() => void checkInvite()}
               disabled={busy}
             >
-              <Text style={styles.buttonText}>{busy ? "Checking…" : "Let’s go"}</Text>
+              <Text style={styles.buttonText}>{busy ? "Checking…" : "Continue"}</Text>
             </Pressable>
           </>
         ) : (
           <>
             <Text style={styles.subtitle}>
-              {mode === "signup" ? "Make your corner of Lock In." : "Welcome back. Let’s lock in."}
+              {mode === "signup" ? "Create your account." : "Welcome back."}
             </Text>
             <Text style={styles.label}>Email</Text>
             <TextInput
@@ -217,32 +216,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
   mascot: {
-    width: 96,
-    height: 96,
+    width: 72,
+    height: 72,
     alignSelf: "center",
-    marginBottom: 16,
-    borderRadius: 28,
-  },
-  kicker: {
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 0.6,
-    color: "#ff5a7a",
-    textAlign: "center",
-    marginBottom: 6,
+    marginBottom: 20,
+    borderRadius: 16,
   },
   title: {
-    fontSize: 34,
-    fontWeight: "800",
+    fontSize: 32,
+    fontWeight: "700",
     textAlign: "center",
     color: "#3a241e",
     marginBottom: 8,
+    letterSpacing: -0.5,
   },
   subtitle: {
     fontSize: 14,
     color: "#a06d62",
     textAlign: "center",
-    marginBottom: 32,
+    marginBottom: 28,
     lineHeight: 20,
   },
   label: {
@@ -250,19 +242,17 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#a06d62",
     marginBottom: 6,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
   },
   input: {
     borderWidth: 1,
     borderColor: "#f5d5c4",
-    borderRadius: 18,
+    borderRadius: 12,
     backgroundColor: "#ffffff",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
     color: "#3a241e",
-    marginBottom: 16,
+    marginBottom: 14,
   },
   error: {
     fontSize: 12,
@@ -271,7 +261,7 @@ const styles = StyleSheet.create({
   },
   button: {
     backgroundColor: "#ff5a7a",
-    borderRadius: 999,
+    borderRadius: 12,
     paddingVertical: 14,
     alignItems: "center",
     marginTop: 8,
@@ -281,7 +271,7 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: "#ffffff",
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "600",
   },
   switchMode: {
@@ -290,11 +280,11 @@ const styles = StyleSheet.create({
   },
   switchModeText: {
     fontSize: 14,
-    fontWeight: "600",
+    fontWeight: "500",
     color: "#ff5a7a",
   },
   legal: {
-    marginTop: 20,
+    marginTop: 24,
     fontSize: 12,
     color: "#a06d62",
     textAlign: "center",

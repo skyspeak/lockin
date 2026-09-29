@@ -67,7 +67,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
   work: { bg: "#ffe0e8", text: "#c73d5c" },
   family: { bg: "#fff0c8", text: "#b07a12" },
-  hobbies: { bg: "#eadcff", text: "#6b3db8" },
+  hobbies: { bg: "#ffe8d8", text: "#b05a3a" },
   extracurriculars: { bg: "#d4f7f2", text: "#1a8f84" },
   other: { bg: "#fde8d8", text: "#9a6e62" },
 };
@@ -438,8 +438,8 @@ const styles = StyleSheet.create({
   sub: { fontFamily: "Inter_400Regular", fontSize: 14, color: COLORS.inkDim, marginTop: 4 },
   listContent: { paddingHorizontal: 16, paddingBottom: 32 },
   swipeWrap: {
-    marginBottom: 10,
-    borderRadius: 20,
+    marginBottom: 8,
+    borderRadius: 14,
     overflow: "hidden",
   },
   swipeFill: {
@@ -456,10 +456,10 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: COLORS.card,
-    padding: 16,
+    padding: 14,
     borderWidth: 1,
     borderColor: COLORS.hairline,
-    borderRadius: 20,
+    borderRadius: 14,
   },
   pendingBlock: { gap: 10, marginBottom: 12 },
   emailBody: {

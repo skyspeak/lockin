@@ -1,5 +1,5 @@
 import { Tabs } from "expo-router";
-import { Platform, Text } from "react-native";
+import { Platform, View } from "react-native";
 
 export const unstable_settings = {
   initialRouteName: "index",
@@ -15,11 +15,14 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: "#fff3e6",
           borderTopColor: "#f5d5c4",
-          paddingTop: 4,
-          height: Platform.OS === "ios" ? 88 : 64,
+          borderTopWidth: 1,
+          paddingTop: 6,
+          height: Platform.OS === "ios" ? 84 : 60,
+          elevation: 0,
+          shadowOpacity: 0,
         },
         tabBarLabelStyle: {
-          fontFamily: "Inter_600SemiBold",
+          fontFamily: "Inter_500Medium",
           fontSize: 11,
         },
       }}
@@ -28,14 +31,14 @@ export default function TabLayout() {
         name="index"
         options={{
           title: "Speak",
-          tabBarIcon: ({ color }) => <TabIcon emoji="🎙️" color={color} />,
+          tabBarIcon: ({ color, focused }) => <MicGlyph color={color} focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="tasks"
         options={{
           title: "Tasks",
-          tabBarIcon: ({ color }) => <TabIcon emoji="✓" color={color} />,
+          tabBarIcon: ({ color, focused }) => <CheckGlyph color={color} focused={focused} />,
         }}
       />
       <Tabs.Screen
@@ -48,13 +51,55 @@ export default function TabLayout() {
         name="settings"
         options={{
           title: "Settings",
-          tabBarIcon: ({ color }) => <TabIcon emoji="🌙" color={color} />,
+          tabBarIcon: ({ color, focused }) => <GearGlyph color={color} focused={focused} />,
         }}
       />
     </Tabs>
   );
 }
 
-function TabIcon({ emoji, color }: { emoji: string; color: string }) {
-  return <Text style={{ fontSize: 22, color, opacity: color === "#ff5a7a" ? 1 : 0.72 }}>{emoji}</Text>;
+function MicGlyph({ color, focused }: { color: string; focused: boolean }) {
+  return (
+    <View
+      style={{
+        width: 22,
+        height: 22,
+        borderRadius: 11,
+        borderWidth: focused ? 2 : 1.5,
+        borderColor: color,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color }} />
+    </View>
+  );
+}
+
+function CheckGlyph({ color, focused }: { color: string; focused: boolean }) {
+  return (
+    <View
+      style={{
+        width: 18,
+        height: 18,
+        borderRadius: 4,
+        borderWidth: focused ? 2 : 1.5,
+        borderColor: color,
+      }}
+    />
+  );
+}
+
+function GearGlyph({ color, focused }: { color: string; focused: boolean }) {
+  return (
+    <View
+      style={{
+        width: 18,
+        height: 18,
+        borderRadius: 9,
+        borderWidth: focused ? 2 : 1.5,
+        borderColor: color,
+      }}
+    />
+  );
 }

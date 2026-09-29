@@ -587,44 +587,28 @@ function ListeningAura({
 
   const breatheScale = breathe.interpolate({
     inputRange: [0, 1],
-    outputRange: [1, 1.05],
-  });
-  const glowScale = energy.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1.06, 1.55],
-  });
-  const glowOpacity = energy.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.16, 0.48],
+    outputRange: [1, 1.04],
   });
 
   return (
     <>
-      {rings.map((ring, index) => {
+      {rings.slice(0, 1).map((ring, index) => {
         const scale = ring.interpolate({
           inputRange: [0, 1],
-          outputRange: [1, 2.35],
+          outputRange: [1, 1.9],
         });
         const opacity = ring.interpolate({
-          inputRange: [0, 0.2, 1],
-          outputRange: [0.5, 0.32, 0],
+          inputRange: [0, 0.25, 1],
+          outputRange: [0.35, 0.2, 0],
         });
         return (
           <Animated.View
             key={index}
             pointerEvents="none"
-            style={[
-              styles.ripple,
-              index === 1 ? styles.rippleMint : null,
-              { transform: [{ scale }], opacity },
-            ]}
+            style={[styles.ripple, { transform: [{ scale }], opacity }]}
           />
         );
       })}
-      <Animated.View
-        pointerEvents="none"
-        style={[styles.voiceGlow, { opacity: glowOpacity, transform: [{ scale: glowScale }] }]}
-      />
       <Animated.View
         pointerEvents="none"
         style={[styles.breatheHalo, { transform: [{ scale: breatheScale }] }]}
@@ -713,7 +697,7 @@ export function VoiceCaptureHero({
             {isTranscribing ? (
               <ActivityIndicator color="#fff" size="large" />
             ) : (
-              <Text style={styles.micIcon}>{isRecording ? "✦" : "🎙️"}</Text>
+              <View style={[styles.micDot, isRecording && styles.micDotLive]} />
             )}
           </Pressable>
         </View>
@@ -762,9 +746,9 @@ const styles = StyleSheet.create({
   },
   brand: {
     fontFamily: "Inter_700Bold",
-    fontSize: 32,
+    fontSize: 28,
     color: COLORS.ink,
-    letterSpacing: -0.6,
+    letterSpacing: -0.5,
   },
   sub: {
     fontFamily: "Inter_400Regular",
@@ -788,19 +772,19 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   modeChip: {
-    borderRadius: 999,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: "#f5d5c4",
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 6,
-    backgroundColor: "#ffffffcc",
+    backgroundColor: "transparent",
   },
   modeChipOn: {
     borderColor: COLORS.accent,
-    backgroundColor: COLORS.accent + "18",
+    backgroundColor: COLORS.accent + "12",
   },
   modeChipText: {
-    fontFamily: "Inter_600SemiBold",
+    fontFamily: "Inter_500Medium",
     fontSize: 13,
     color: COLORS.inkDim,
   },
@@ -809,65 +793,60 @@ const styles = StyleSheet.create({
   },
   micCol: { alignItems: "center", marginTop: 8 },
   micStage: {
-    width: 200,
-    height: 200,
+    width: 160,
+    height: 160,
     alignItems: "center",
     justifyContent: "center",
   },
   ripple: {
     position: "absolute",
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    borderWidth: 2,
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    borderWidth: 1.5,
     borderColor: COLORS.accent,
-  },
-  rippleMint: {
-    borderColor: "#3ecfc1",
-  },
-  voiceGlow: {
-    position: "absolute",
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: COLORS.accent,
   },
   breatheHalo: {
     position: "absolute",
-    width: 112,
-    height: 112,
-    borderRadius: 56,
-    backgroundColor: COLORS.accent + "22",
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: COLORS.accent + "14",
   },
   mic: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 88,
+    height: 88,
+    borderRadius: 44,
     backgroundColor: COLORS.accent,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 2,
-    shadowColor: COLORS.accent,
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
   },
   micActive: { backgroundColor: COLORS.accentActive },
-  micIcon: { fontSize: 34 },
+  micDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "#fff",
+  },
+  micDotLive: {
+    width: 22,
+    height: 14,
+    borderRadius: 4,
+  },
   micLabel: {
-    marginTop: -12,
+    marginTop: 4,
     fontFamily: "Inter_500Medium",
-    fontSize: 14,
+    fontSize: 13,
     color: COLORS.inkDim,
   },
   composer: {
-    marginTop: 20,
+    marginTop: 24,
     width: "100%",
     flexDirection: "row",
     alignItems: "flex-end",
     gap: 8,
-    borderRadius: 20,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: "#f5d5c4",
     backgroundColor: "#fff",
@@ -884,9 +863,9 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   addBtn: {
-    borderRadius: 999,
+    borderRadius: 12,
     backgroundColor: COLORS.accent,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 10,
   },
   addBtnDisabled: { opacity: 0.45 },
