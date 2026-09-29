@@ -1,5 +1,5 @@
-import React, { useCallback, useMemo, useState } from "react";
-import { Alert, Pressable, RefreshControl, SectionList, StyleSheet, Text, TextInput, View } from "react-native";
+import React, { useCallback, useState } from "react";
+import { Alert, FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Swipeable from "react-native-gesture-handler/Swipeable";
 import { useFocusEffect } from "expo-router";
@@ -54,24 +54,6 @@ type Action = {
   nextSteps?: string[];
 };
 
-const CATEGORY_ORDER = ["work", "family", "hobbies", "extracurriculars", "other"] as const;
-
-const CATEGORY_LABELS: Record<string, string> = {
-  work: "Work",
-  family: "Family",
-  hobbies: "Hobbies",
-  extracurriculars: "Extracurriculars",
-  other: "Other",
-};
-
-const CATEGORY_COLORS: Record<string, { bg: string; text: string }> = {
-  work: { bg: "#ffe0e8", text: "#c73d5c" },
-  family: { bg: "#fff0c8", text: "#b07a12" },
-  hobbies: { bg: "#ffe8d8", text: "#b05a3a" },
-  extracurriculars: { bg: "#d4f7f2", text: "#1a8f84" },
-  other: { bg: "#fde8d8", text: "#9a6e62" },
-};
-
 async function resolveApiBase(): Promise<string> {
   const stored = await AsyncStorage.getItem(SERVER_STORAGE_KEY);
   const origin = stored || resolveDefaultApiOrigin();
@@ -117,24 +99,6 @@ export function TaskListScreen() {
   );
 
   const queue = (data?.queue ?? []) as Action[];
-  const sections = useMemo(() => {
-    const sorted = [...queue].sort((a, b) => {
-      const ai = CATEGORY_ORDER.indexOf((a.category ?? "other") as (typeof CATEGORY_ORDER)[number]);
-      const bi = CATEGORY_ORDER.indexOf((b.category ?? "other") as (typeof CATEGORY_ORDER)[number]);
-      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-    });
-    const grouped: Array<{ title: string; data: Action[] }> = [];
-    for (const item of sorted) {
-      const category = item.category ?? "other";
-      const last = grouped[grouped.length - 1];
-      if (last && last.title === category) {
-        last.data.push(item);
-      } else {
-        grouped.push({ title: category, data: [item] });
-      }
-    }
-    return grouped;
-  }, [queue]);
 
   const handleComplete = useCallback(
     async (id: number) => {
@@ -285,10 +249,9 @@ export function TaskListScreen() {
             : "Swipe right when done · left to delete"}
         </Text>
       </View>
-      <SectionList
-        sections={sections}
+      <FlatList
+        data={queue}
         keyExtractor={(item) => String(item.id)}
-        stickySectionHeadersEnabled={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         initialNumToRender={8}
@@ -322,14 +285,7 @@ export function TaskListScreen() {
             </View>
           ) : null
         }
-        renderSectionHeader={({ section }) => (
-          <Text style={styles.sectionTitle}>
-            {CATEGORY_LABELS[section.title] ?? section.title}
-          </Text>
-        )}
         renderItem={({ item }) => {
-          const category = item.category ?? "other";
-          const chip = CATEGORY_COLORS[category] ?? CATEGORY_COLORS.other;
           const listening = refiningId === item.id;
           const open = openId === item.id;
           return (
@@ -358,16 +314,9 @@ export function TaskListScreen() {
                 )}
               >
                 <View style={styles.card}>
-                  <View style={styles.cardHeader}>
-                    <Text style={styles.cardTitle} numberOfLines={4}>
-                      {item.title}
-                    </Text>
-                    <View style={[styles.chip, { backgroundColor: chip.bg }]}>
-                      <Text style={[styles.chipText, { color: chip.text }]}>
-                        {CATEGORY_LABELS[category] ?? category}
-                      </Text>
-                    </View>
-                  </View>
+                  <Text style={styles.cardTitle} numberOfLines={4}>
+                    {item.title}
+                  </Text>
                   {item.description ? (
                     <Text style={styles.emailBody}>{item.description}</Text>
                   ) : null}
@@ -467,6 +416,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.ink,
     lineHeight: 20,
+    marginTop: 8,
     marginBottom: 8,
   },
   cardTitle: {
@@ -474,27 +424,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: COLORS.ink,
     lineHeight: 22,
-    flex: 1,
   },
-  cardHeader: { flexDirection: "row", alignItems: "flex-start", gap: 8, marginBottom: 8 },
   nextStep: {
     fontFamily: "Inter_400Regular",
     fontSize: 13,
     color: COLORS.inkDim,
     lineHeight: 18,
     marginBottom: 4,
-  },
-  chip: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
-  chipText: { fontFamily: "Inter_600SemiBold", fontSize: 10, textTransform: "uppercase" },
-  sectionTitle: {
-    fontFamily: "Inter_600SemiBold",
-    fontSize: 11,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    color: COLORS.inkDim,
-    marginBottom: 8,
-    marginTop: 8,
-    backgroundColor: COLORS.bg,
   },
   refineRow: { flexDirection: "row", gap: 8, marginTop: 10 },
   refineToggle: {
