@@ -5,9 +5,13 @@ export {
   resolveOpenRouterConfig,
   createChatClient,
   chatCompletionJson,
+  probeChatProviders,
+  GEMINI_CHAT_FALLBACKS,
+  OPENROUTER_CHAT_FALLBACKS,
   type ChatConfig,
   type ChatProvider,
   type ChatJsonOptions,
+  type ProviderProbe,
 } from "./llm";
 export { transcribeAudio } from "./transcribe";
 export { prepareTranscript, isEmptyTranscriptError, type PrepareTranscriptOptions } from "./transcript";

@@ -11,13 +11,30 @@ export type ChatConfig = {
 
 const OPENROUTER_DEFAULTS = {
   baseURL: "https://openrouter.ai/api/v1",
-  model: "google/gemini-3.5-flash",
+  model: "google/gemini-2.5-flash",
 } as const;
 
 const GEMINI_DEFAULTS = {
   baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
-  model: "gemini-3.5-flash",
+  // 3.5-flash is real but often 503 / burns tokens on "thinking" and returns
+  // empty or non-JSON. Prefer 2.5-flash; keep 3.5 in the fallback list.
+  model: "gemini-2.5-flash",
 } as const;
+
+/** Stable Flash IDs to try when the configured Gemini model fails. */
+export const GEMINI_CHAT_FALLBACKS = [
+  "gemini-2.5-flash",
+  "gemini-3.5-flash-lite",
+  "gemini-2.5-flash-lite",
+  "gemini-3.5-flash",
+] as const;
+
+/** OpenRouter chat models when the preferred one is out / 402 / 404. */
+export const OPENROUTER_CHAT_FALLBACKS = [
+  "google/gemini-2.5-flash",
+  "google/gemini-3.5-flash-lite",
+  "openai/gpt-4o-mini",
+] as const;
 
 function parseProvider(raw: string | undefined): ChatProvider {
   const value = raw?.toLowerCase();
@@ -110,18 +127,16 @@ export function createChatClient(config = resolveChatConfig()): OpenAI {
 
   const headers: Record<string, string> = {};
   if (config.provider === "openrouter") {
-    if (process.env.OPENROUTER_HTTP_REFERER) {
-      headers["HTTP-Referer"] = process.env.OPENROUTER_HTTP_REFERER;
-    }
-    if (process.env.OPENROUTER_APP_TITLE) {
-      headers["X-Title"] = process.env.OPENROUTER_APP_TITLE;
-    }
+    headers["HTTP-Referer"] = process.env.OPENROUTER_HTTP_REFERER || "https://lockin.app";
+    headers["X-Title"] = process.env.OPENROUTER_APP_TITLE || "Lock In";
   }
 
   return new OpenAI({
     baseURL: config.baseURL,
     apiKey: config.apiKey,
     defaultHeaders: Object.keys(headers).length > 0 ? headers : undefined,
+    timeout: 45_000,
+    maxRetries: 1,
   });
 }
 
@@ -130,6 +145,11 @@ export type ChatJsonOptions = {
   responseSchema?: Record<string, unknown>;
 };
 
+function looksLikeJson(raw: string): boolean {
+  const trimmed = raw.trim();
+  return trimmed.startsWith("{") || trimmed.startsWith("[");
+}
+
 async function completeJsonWithConfig(
   config: ChatConfig,
   messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
@@ -137,6 +157,9 @@ async function completeJsonWithConfig(
 ): Promise<string> {
   const client = createChatClient(config);
   const temperature = options.temperature ?? 0.2;
+  // Thinking models (3.5) can burn the whole budget on thoughts and return
+  // empty / prose. Give them room, then reject non-JSON so we fall through.
+  const maxTokens = 2048;
   const responseFormat = options.responseSchema
     ? ({
         type: "json_schema",
@@ -148,56 +171,50 @@ async function completeJsonWithConfig(
       } as OpenAI.Chat.Completions.ChatCompletionCreateParams["response_format"])
     : ({ type: "json_object" } as const);
 
-  try {
-    const response = await client.chat.completions.create({
-      model: config.model,
-      temperature,
-      response_format: responseFormat,
-      messages,
-    });
-    const raw = response.choices[0]?.message?.content;
-    if (!raw) {
-      throw new Error("Empty LLM response");
-    }
-    return raw;
-  } catch (err) {
+  const attempts: Array<Partial<OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming>> = [
+    { response_format: responseFormat, max_tokens: maxTokens },
+    { response_format: { type: "json_object" }, max_tokens: maxTokens },
+    { max_tokens: maxTokens },
+  ];
+
+  let lastError: unknown;
+  for (const attempt of attempts) {
     try {
       const response = await client.chat.completions.create({
         model: config.model,
         temperature,
-        response_format: { type: "json_object" },
         messages,
+        ...attempt,
       });
-      const raw = response.choices[0]?.message?.content;
-      if (!raw) throw err;
-      return raw;
-    } catch {
-      const response = await client.chat.completions.create({
-        model: config.model,
-        temperature,
-        messages,
-      });
-      const raw = response.choices[0]?.message?.content;
+      const raw = response.choices[0]?.message?.content?.trim() ?? "";
       if (!raw) {
-        throw err instanceof Error ? err : new Error("Empty LLM response");
+        lastError = new Error("Empty LLM response");
+        continue;
+      }
+      if (!looksLikeJson(raw)) {
+        lastError = new Error(`Non-JSON LLM response: ${raw.slice(0, 80)}`);
+        continue;
       }
       return raw;
+    } catch (err) {
+      lastError = err;
     }
   }
+
+  throw lastError instanceof Error ? lastError : new Error("Empty LLM response");
 }
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/** Prefer the configured Gemini model, then known Flash IDs if that name 404s. */
 function geminiChatConfigs(base: ChatConfig): ChatConfig[] {
-  const models = [
-    base.model,
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-2.5-flash-lite",
-  ];
+  const models = [base.model, ...GEMINI_CHAT_FALLBACKS];
+  return [...new Set(models.filter(Boolean))].map((model) => ({ ...base, model }));
+}
+
+function openrouterChatConfigs(base: ChatConfig): ChatConfig[] {
+  const models = [base.model, ...OPENROUTER_CHAT_FALLBACKS];
   return [...new Set(models.filter(Boolean))].map((model) => ({ ...base, model }));
 }
 
@@ -220,10 +237,12 @@ export async function chatCompletionJson(
   }
 
   if (openrouter) {
-    try {
-      return await completeJsonWithConfig(openrouter, messages, options);
-    } catch (err) {
-      errors.push(`openrouter: ${errorMessage(err)}`);
+    for (const config of openrouterChatConfigs(openrouter)) {
+      try {
+        return await completeJsonWithConfig(config, messages, options);
+      } catch (err) {
+        errors.push(`openrouter/${config.model}: ${errorMessage(err)}`);
+      }
     }
   }
 
@@ -232,4 +251,75 @@ export async function chatCompletionJson(
   }
 
   throw new Error(`LLM request failed (${errors.join("; ") || "no providers configured"})`);
+}
+
+export type ProviderProbe = {
+  configured: boolean;
+  ok: boolean;
+  model?: string;
+  error?: string;
+};
+
+/** Live one-token probe for ops/health — never logs the key. */
+export async function probeChatProviders(): Promise<{
+  gemini: ProviderProbe;
+  openrouter: ProviderProbe;
+  preferred: string;
+}> {
+  const geminiCfg = resolveGeminiConfig();
+  const openrouterCfg = resolveOpenRouterConfig();
+  const preferred = geminiCfg?.model || openrouterCfg?.model || "none";
+
+  const gemini: ProviderProbe = { configured: Boolean(geminiCfg), ok: false };
+  const openrouter: ProviderProbe = { configured: Boolean(openrouterCfg), ok: false };
+
+  if (geminiCfg) {
+    gemini.model = geminiCfg.model;
+    try {
+      const raw = await completeJsonWithConfig(
+        { ...geminiCfg, model: geminiCfg.model || GEMINI_DEFAULTS.model },
+        [
+          { role: "system", content: "Return JSON only." },
+          { role: "user", content: 'Reply with {"ok":true}' },
+        ],
+      );
+      gemini.ok = looksLikeJson(raw);
+      if (!gemini.ok) gemini.error = "Non-JSON response";
+    } catch (err) {
+      // Prefer a known-good fallback model for the probe so ops see if *any* Gemini works.
+      try {
+        const raw = await completeJsonWithConfig(
+          { ...geminiCfg, model: "gemini-2.5-flash" },
+          [
+            { role: "system", content: "Return JSON only." },
+            { role: "user", content: 'Reply with {"ok":true}' },
+          ],
+        );
+        gemini.ok = looksLikeJson(raw);
+        gemini.model = "gemini-2.5-flash";
+        gemini.error = `preferred failed: ${errorMessage(err)}`;
+      } catch (err2) {
+        gemini.error = errorMessage(err2);
+      }
+    }
+  }
+
+  if (openrouterCfg) {
+    openrouter.model = openrouterCfg.model;
+    try {
+      const raw = await completeJsonWithConfig(openrouterCfg, [
+        { role: "system", content: "Return JSON only." },
+        { role: "user", content: 'Reply with {"ok":true}' },
+      ]);
+      openrouter.ok = looksLikeJson(raw);
+      if (!openrouter.ok) openrouter.error = "Non-JSON response";
+    } catch (err) {
+      const message = errorMessage(err);
+      openrouter.error = /402|insufficient credits/i.test(message)
+        ? "Insufficient OpenRouter credits"
+        : message;
+    }
+  }
+
+  return { gemini, openrouter, preferred };
 }

@@ -1,4 +1,4 @@
-import { createChatClient, resolveGeminiConfig, resolveOpenRouterConfig } from "./llm";
+import { createChatClient, resolveGeminiConfig, resolveOpenRouterConfig, GEMINI_CHAT_FALLBACKS } from "./llm";
 import { isEmptyTranscriptError, prepareTranscript } from "./transcript";
 
 function errorMessage(err: unknown): string {
@@ -14,8 +14,8 @@ function normalizeGeminiAudioMime(mime: string): string {
 }
 
 function geminiModels(): string[] {
-  const preferred = process.env.GEMINI_MODEL?.trim();
-  return [...new Set([preferred, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.5-flash-lite"].filter(Boolean))] as string[];
+  const preferred = process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
+  return [...new Set([preferred, ...GEMINI_CHAT_FALLBACKS].filter(Boolean))] as string[];
 }
 
 type GeminiGenerateResponse = {
@@ -61,6 +61,7 @@ async function transcribeWithGeminiModel(
       contents: [{ parts }],
       generationConfig: { thinkingConfig: { thinkingBudget: 0 }, temperature: 0 },
     },
+    { contents: [{ parts }], generationConfig: { temperature: 0 } },
     { contents: [{ parts }] },
   ];
 
@@ -70,6 +71,7 @@ async function transcribeWithGeminiModel(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(45_000),
     });
     if (!res.ok) {
       lastError = `Gemini transcribe HTTP ${res.status}: ${(await res.text()).slice(0, 240)}`;
@@ -203,6 +205,8 @@ export async function transcribeAudio(input: {
   const errors: string[] = [];
   let sawEmpty = false;
 
+  // Always try Gemini first when configured, then OpenRouter/OpenAI whisper.
+  // Do not stop on "empty" from Gemini alone — Whisper may still hear speech.
   if (resolveGeminiConfig()) {
     try {
       return await transcribeWithGemini(input.buffer, input.mime);
@@ -212,11 +216,13 @@ export async function transcribeAudio(input: {
     }
   }
 
-  try {
-    return await transcribeWithOpenAICompat(input.buffer, input.mime, input.filename);
-  } catch (err) {
-    if (isEmptyTranscriptError(err)) sawEmpty = true;
-    else errors.push(errorMessage(err));
+  if (resolveOpenRouterConfig() || (process.env.AI_INTEGRATIONS_OPENAI_API_KEY && process.env.AI_INTEGRATIONS_OPENAI_BASE_URL)) {
+    try {
+      return await transcribeWithOpenAICompat(input.buffer, input.mime, input.filename);
+    } catch (err) {
+      if (isEmptyTranscriptError(err)) sawEmpty = true;
+      else errors.push(errorMessage(err));
+    }
   }
 
   const realErrors = errors.filter((entry) => !/no transcription fallback configured/i.test(entry));

@@ -671,7 +671,12 @@ export async function extractFromThought(
         responseSchema: RESPONSE_SCHEMA,
       },
     );
-  } catch {
+  } catch (err) {
+    // Keep a usable task even when every provider fails (e.g. OpenRouter 402).
+    console.warn(
+      "[extract] LLM failed, using local fallback:",
+      err instanceof Error ? err.message.slice(0, 240) : err,
+    );
     return { actions: [fallbackAction(clipped, userName)], events: [] };
   }
 
