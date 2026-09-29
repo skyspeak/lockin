@@ -302,32 +302,8 @@ export function useVoiceCapture() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       invalidateQueue();
 
-      const sentEmails = (json.emails ?? []).filter((e) => e.sent);
-      const blockedEmails = (json.emails ?? []).filter((e) => !e.sent);
-      const researchBits = json.research ?? [];
-
-      if (researchBits.length > 0) {
-        Alert.alert(
-          researchBits.length === 1 ? "Research ready" : "Research locked in",
-          researchBits.map((r) => r.answer.slice(0, 280)).join("\n\n"),
-        );
-      } else if (sentEmails.length > 0) {
-        Alert.alert(
-          sentEmails.length === 1 ? "Email sent" : "Emails sent",
-          sentEmails.map((e) => `${e.subject} → ${e.to.join(", ")}`).join("\n"),
-        );
-      } else if (blockedEmails.length > 0) {
-        Alert.alert(
-          "Draft saved",
-          blockedEmails.map((e) => e.error || "Need a recipient email before sending.").join("\n"),
-        );
-      } else if (json.calendarCreated && json.calendarCreated > 0) {
-        Alert.alert("On your calendar", `${json.calendarCreated} event${json.calendarCreated === 1 ? "" : "s"} added.`);
-      } else if (json.calendarError) {
-        Alert.alert("Task saved", "Calendar invite did not send. Connect Gmail in Settings.");
-      } else if ((json.kinds ?? []).includes("task") || items.length > 0) {
-        // Deep solve map already attached to the task — light confirmation.
-      }
+      // Calendar / email / research finish in the background now — don't block
+      // the Success haptic on those side effects.
     } catch (err) {
       if (isNetworkCaptureError(err)) {
         await holdPendingCapture({ audioUri: capture.uri, reason: "network" });
@@ -358,6 +334,13 @@ export function useVoiceCapture() {
     }
 
     await stopOnly();
+    // Show the note in the hero immediately — server now ACKs before LLM work.
+    const preview = [{ title: trimmed.slice(0, 120), nextSteps: ["Locking in…"] }];
+    setLastCaptured(preview);
+    setLastTranscript(captureModeRef.current === "transcribe" ? trimmed : "");
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    invalidateQueue();
+
     transcribingRef.current = true;
     setIsTranscribing(true);
     try {
@@ -376,66 +359,39 @@ export function useVoiceCapture() {
           await holdPendingCapture({ text: trimmed, reason: "server" });
           return true;
         }
+        setLastCaptured([]);
+        setLastTranscript("");
         alertCaptureFailure(mode, res.status, detail);
         return false;
       }
       const json = (await res.json()) as {
         transcript?: string;
         actions?: { title: string; nextSteps?: string[]; description?: string | null }[];
-        calendarCreated?: number;
-        calendarError?: string;
-        emails?: Array<{ title: string; subject: string; to: string[]; sent: boolean; error?: string }>;
-        research?: Array<{ title: string; type?: string; answer: string }>;
-        kinds?: string[];
       };
       const items = (json.actions ?? [])
         .map((a) => ({ title: a.title, nextSteps: a.nextSteps ?? [] }))
         .filter((a) => a.title);
-      const text = json.transcript?.trim() || trimmed;
       if (mode === "transcribe") {
+        const text = json.transcript?.trim() || trimmed;
         if (!text && items.length === 0) {
+          setLastCaptured([]);
+          setLastTranscript("");
           Alert.alert("Nothing captured", "Try a more specific note.");
           return false;
         }
         setLastTranscript(text);
-        setLastCaptured(items);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setLastCaptured(items.length > 0 ? items : preview);
         invalidateQueue();
         return true;
       }
       if (items.length === 0) {
+        setLastCaptured([]);
         Alert.alert("Nothing captured", "Try a more specific to-do.");
         return false;
       }
       setLastCaptured(items);
       setLastTranscript("");
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       invalidateQueue();
-
-      const sentEmails = (json.emails ?? []).filter((e) => e.sent);
-      const blockedEmails = (json.emails ?? []).filter((e) => !e.sent);
-      const researchBits = json.research ?? [];
-
-      if (researchBits.length > 0) {
-        Alert.alert(
-          researchBits.length === 1 ? "Research ready" : "Research locked in",
-          researchBits.map((r) => r.answer.slice(0, 280)).join("\n\n"),
-        );
-      } else if (sentEmails.length > 0) {
-        Alert.alert(
-          sentEmails.length === 1 ? "Email sent" : "Emails sent",
-          sentEmails.map((e) => `${e.subject} → ${e.to.join(", ")}`).join("\n"),
-        );
-      } else if (blockedEmails.length > 0) {
-        Alert.alert(
-          "Draft saved",
-          blockedEmails.map((e) => e.error || "Need a recipient email before sending.").join("\n"),
-        );
-      } else if (json.calendarCreated && json.calendarCreated > 0) {
-        Alert.alert("On your calendar", `${json.calendarCreated} event${json.calendarCreated === 1 ? "" : "s"} added.`);
-      } else if (json.calendarError) {
-        Alert.alert("Task saved", "Calendar invite did not send. Connect Gmail in Settings.");
-      }
       return true;
     } catch (err) {
       if (isNetworkCaptureError(err)) {
@@ -451,6 +407,8 @@ export function useVoiceCapture() {
         invalidateQueue();
         return true;
       }
+      setLastCaptured([]);
+      setLastTranscript("");
       alertCaptureFailure(captureModeRef.current, 0, message);
       return false;
     } finally {
@@ -646,8 +604,10 @@ export function VoiceCaptureHero({
   const submitDraft = async () => {
     const text = draft.trim();
     if (!text || isTranscribing) return;
+    // Clear immediately so Add feels instant; restore if the save fails.
+    setDraft("");
     const ok = await onTypedSubmit(text);
-    if (ok) setDraft("");
+    if (!ok) setDraft(text);
   };
 
   return (

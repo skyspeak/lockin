@@ -21,6 +21,28 @@ export function wait(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Hermes / React Native still omit AbortSignal.timeout. Calling the native
+ * static throws: "AbortSignal.timeout is not a function (it is undefined)".
+ */
+export function abortSignalAfter(ms: number): AbortSignal {
+  const timeout = (
+    AbortSignal as typeof AbortSignal & { timeout?: (delay: number) => AbortSignal }
+  ).timeout;
+  if (typeof timeout === "function") {
+    return timeout(ms);
+  }
+  const controller = new AbortController();
+  setTimeout(() => {
+    try {
+      controller.abort();
+    } catch {
+      // already aborted
+    }
+  }, ms);
+  return controller.signal;
+}
+
 export function recorderIsLive(recorder: AudioRecorder): boolean {
   return recorder.getStatus().isRecording;
 }
@@ -174,7 +196,7 @@ export async function uploadCaptureAudio(
       mime,
       filename: `audio.${ext}`,
     }),
-    signal: AbortSignal.timeout(CAPTURE_TIMEOUT_MS),
+    signal: abortSignalAfter(CAPTURE_TIMEOUT_MS),
   });
 }
 
@@ -191,6 +213,6 @@ export async function uploadCaptureText(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ text }),
-    signal: AbortSignal.timeout(CAPTURE_TIMEOUT_MS),
+    signal: abortSignalAfter(CAPTURE_TIMEOUT_MS),
   });
 }

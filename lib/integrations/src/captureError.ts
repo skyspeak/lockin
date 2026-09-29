@@ -35,6 +35,10 @@ export function presentCaptureError(raw: string, status?: number): string {
   ) {
     return "Check your connection and try again.";
   }
+  // Hermes: "AbortSignal.timeout is not a function (it is undefined)"
+  if (lower.includes("is not a function") || lower.includes("abortsignal")) {
+    return "Update Lock In from TestFlight, then try again.";
+  }
   if (
     lower.includes("gemini") ||
     lower.includes("api key") ||

@@ -139,6 +139,63 @@ async function enrichCaptureInBackground(
   }
 }
 
+async function routeAndEnrichInBackground(
+  req: Request,
+  provisional: typeof actionsTable.$inferSelect,
+  thoughtId: number,
+  transcript: string,
+  extractCtx: ExtractContext,
+): Promise<void> {
+  const userId = req.userId;
+  let routed: ExtractResult;
+  try {
+    routed = await extractFromThought(transcript, new Date(), extractCtx);
+  } catch (err) {
+    req.log.warn(
+      { err: err instanceof Error ? err.message : "unknown" },
+      "extract after capture failed; keeping provisional task",
+    );
+    return;
+  }
+
+  if (routed.actions.length === 0) return;
+
+  const first = routed.actions[0]!;
+  const [updatedFirst] = await db
+    .update(actionsTable)
+    .set({
+      title: first.title,
+      description: first.description ?? null,
+      category: first.category,
+      priority: first.priority,
+      nextSteps: first.nextSteps,
+      updatedAt: new Date(),
+    })
+    .where(eq(actionsTable.id, provisional.id))
+    .returning();
+
+  let rows = [updatedFirst ?? provisional];
+  if (routed.actions.length > 1) {
+    const extras = await db
+      .insert(actionsTable)
+      .values(
+        routed.actions.slice(1).map((item: (typeof routed.actions)[number]) => ({
+          userId,
+          title: item.title,
+          description: item.description ?? null,
+          category: item.category,
+          priority: item.priority,
+          thoughtId,
+          nextSteps: item.nextSteps,
+        })),
+      )
+      .returning();
+    rows = [...rows, ...extras];
+  }
+
+  await enrichCaptureInBackground(req, rows, routed, extractCtx);
+}
+
 async function persistFromTranscript(
   req: Request,
   res: Response,
@@ -146,6 +203,7 @@ async function persistFromTranscript(
   mode: "tasks" | "transcribe",
 ): Promise<Response> {
   const userId = req.userId;
+  const trimmed = transcript.trim();
 
   if (mode === "transcribe") {
     const [thought] = await db
@@ -157,13 +215,13 @@ async function persistFromTranscript(
       })
       .returning();
 
-    const title = transcript.trim().slice(0, 500) || "Note";
+    const title = trimmed.slice(0, 500) || "Note";
     const [action] = await db
       .insert(actionsTable)
       .values({
         userId,
         title,
-        description: transcript.trim().slice(0, 2000),
+        description: trimmed.slice(0, 2000),
         category: "other",
         priority: "medium",
         thoughtId: thought.id,
@@ -186,14 +244,9 @@ async function persistFromTranscript(
     timeZone: process.env.LOCKIN_TIMEZONE || "America/Los_Angeles",
   };
 
-  const routed = await extractFromThought(transcript, new Date(), extractCtx);
-  if (routed.actions.length === 0) {
-    return res.status(400).json({ error: "Nothing captured. Try speaking again." });
-  }
-
-  // Commit the pile, then answer the phone immediately. Slow fulfill / calendar /
-  // email used to keep the HTTP socket open until Railway/proxy killed it — the
-  // app then treated that as "offline" and re-queued a capture that already landed.
+  // Answer the phone immediately with a provisional row. LLM extract + fulfill
+  // used to hold the socket open for 6–25s; the pile gets refined in background.
+  const title = trimmed.slice(0, 120) || "New task";
   const [thought] = await db
     .insert(thoughtsTable)
     .values({
@@ -203,38 +256,34 @@ async function persistFromTranscript(
     })
     .returning();
 
-  const inserted = await db
+  const [provisional] = await db
     .insert(actionsTable)
-    .values(
-      routed.actions.map((item) => ({
-        userId,
-        title: item.title,
-        description: item.description ?? null,
-        category: item.category,
-        priority: item.priority,
-        thoughtId: thought.id,
-        nextSteps: item.nextSteps,
-      })),
-    )
+    .values({
+      userId,
+      title,
+      description: trimmed.length > title.length ? trimmed.slice(0, 2000) : null,
+      category: "other",
+      priority: "medium",
+      thoughtId: thought.id,
+      nextSteps: ["Locking in…"],
+    })
     .returning();
 
-  const payload = {
+  res.json({
     transcript,
-    actions: inserted,
-    events: routed.events,
+    actions: [provisional],
+    events: [],
     calendarCreated: 0,
     emails: [] as Array<{ title: string; subject: string; to: string[]; sent: boolean; error?: string }>,
     research: [] as Array<{ title: string; type?: string; answer: string }>,
-    kinds: routed.actions.map((item) => item.routerType ?? "task"),
+    kinds: ["task"],
     enriching: true,
-  };
+  });
 
-  res.json(payload);
-
-  void enrichCaptureInBackground(req, inserted, routed, extractCtx).catch((err) => {
+  void routeAndEnrichInBackground(req, provisional, thought.id, transcript, extractCtx).catch((err) => {
     req.log.warn(
       { err: err instanceof Error ? err.message : "unknown" },
-      "background enrich after capture failed",
+      "background route/enrich after capture failed",
     );
   });
 
